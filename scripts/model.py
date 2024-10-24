@@ -69,7 +69,7 @@ class VeraModel(nn.Module):
     # In this function, it replaces the existing child module (identified by child_name) in parent with new_module.
     def _replace_module(self, parent, child_name, new_module):
         setattr(parent, child_name, new_module)
-
+    # During fine-tuning, this method is called to replace standard layers with adapter-enabled layers that allow for low-rank fine-tuning.
     def create_and_replace(self, target, target_name, parent):
         r = self.config.r
         vera_A = self.vera_A
