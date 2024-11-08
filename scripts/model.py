@@ -8,7 +8,7 @@ import torch.nn as nn
 from torch.nn.init import _calculate_correct_fan
 from tqdm import tqdm
 from transformers.pytorch_utils import Conv1D
-from .layers import Linear, VeraLayer  # Import the necessary layers
+from layers import Linear, VeraLayer  # Import the necessary layers
 
 class VeraModel(nn.Module):
     """

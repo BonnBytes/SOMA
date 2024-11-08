@@ -65,6 +65,8 @@ class VeraLayer(nn.Module):
         init_weights,
         d_initial: float = 0.1,
     ):
+        print("self.out_features")
+        print(self.out_features)
         if r <= 0:
             raise ValueError(f"`r` should be a positive integer value but the value passed is {r}")
         self.r[adapter_name] = r
@@ -128,9 +130,11 @@ class Linear(nn.Linear, VeraLayer):
         d_initial: float = 0.1,
         **kwargs,
     ):
-        # adapter name: The name of the adapter being used (could be useful for multi-task learning).
-        super(nn.Linear, self).__init__()
         VeraLayer.__init__(self, base_layer, **kwargs)
+        # adapter name: The name of the adapter being used (could be useful for multi-task learning).
+        # super().__init__(base_layer.in_features, base_layer.out_features)
+        # nn.Linear.__init__(self, base_layer.in_features, base_layer.out_features)
+       
         self.fan_in_fan_out = fan_in_fan_out
         self._active_adapter = adapter_name
         # Calls update_layer to initialize or update the adapter-related parameters (vera_A, vera_B, etc.) and set up the layer for the adapter specified by adapter_name.
