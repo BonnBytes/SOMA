@@ -1,0 +1,69 @@
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) Python/3.12.3-GCCcore-13.3.0
+
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) CUDA/12.4.0
+
+master_addr is only used for static rdzv_backend and when rdzv_endpoint is not specified.
+  0%|          | 0/169001437 [00:00<?, ?it/s]  0%|          | 32768/169001437 [00:00<17:12, 163599.69it/s]  0%|          | 98304/169001437 [00:00<07:40, 366654.12it/s]  0%|          | 229376/169001437 [00:00<03:56, 713640.31it/s]  0%|          | 425984/169001437 [00:00<02:27, 1141553.83it/s]  1%|          | 851968/169001437 [00:00<01:17, 2160782.02it/s]  1%|          | 1703936/169001437 [00:00<00:40, 4175396.65it/s]  2%|▏         | 3375104/169001437 [00:00<00:20, 8083854.97it/s]  4%|▍         | 6389760/169001437 [00:00<00:11, 14677470.60it/s]  6%|▌         | 9535488/169001437 [00:01<00:08, 19462970.02it/s]  7%|▋         | 12615680/169001437 [00:01<00:06, 22543225.04it/s]  9%|▉         | 15695872/169001437 [00:01<00:06, 24672021.89it/s] 11%|█         | 18776064/169001437 [00:01<00:05, 26386366.40it/s] 13%|█▎        | 21889024/169001437 [00:01<00:05, 27636661.78it/s] 15%|█▍        | 24674304/169001437 [00:01<00:05, 26212073.32it/s] 16%|█▌        | 27328512/169001437 [00:01<00:05, 25136410.27it/s] 18%|█▊        | 29884416/169001437 [00:01<00:05, 24640481.79it/s] 19%|█▉        | 32768000/169001437 [00:01<00:05, 25588438.94it/s] 21%|██        | 35880960/169001437 [00:01<00:04, 27062462.18it/s] 23%|██▎       | 38633472/169001437 [00:02<00:05, 25545166.42it/s] 24%|██▍       | 41222144/169001437 [00:02<00:05, 24506521.35it/s] 26%|██▌       | 43712512/169001437 [00:02<00:05, 23360301.56it/s] 27%|██▋       | 46071808/169001437 [00:02<00:05, 23075259.52it/s] 29%|██▊       | 48398336/169001437 [00:02<00:05, 22228325.41it/s] 30%|██▉       | 50659328/169001437 [00:02<00:06, 17741002.05it/s] 31%|███       | 52592640/169001437 [00:02<00:06, 17692597.21it/s] 32%|███▏      | 54460416/169001437 [00:02<00:06, 17636317.94it/s] 33%|███▎      | 56295424/169001437 [00:03<00:06, 17642961.14it/s] 34%|███▍      | 58130432/169001437 [00:03<00:07, 14737008.21it/s] 35%|███▌      | 59736064/169001437 [00:03<00:07, 14996543.43it/s] 36%|███▋      | 61341696/169001437 [00:03<00:07, 15221353.12it/s] 37%|███▋      | 62947328/169001437 [00:03<00:06, 15377351.14it/s] 38%|███▊      | 64552960/169001437 [00:03<00:06, 15527542.37it/s] 39%|███▉      | 66158592/169001437 [00:03<00:06, 15657021.46it/s] 40%|████      | 67764224/169001437 [00:03<00:06, 15719110.51it/s] 41%|████      | 69369856/169001437 [00:03<00:06, 15790611.76it/s] 42%|████▏     | 71008256/169001437 [00:04<00:06, 15910700.24it/s] 43%|████▎     | 72646656/169001437 [00:04<00:06, 16024071.23it/s] 44%|████▍     | 74317824/169001437 [00:04<00:05, 16164414.45it/s] 45%|████▍     | 75988992/169001437 [00:04<00:05, 16268532.26it/s] 46%|████▌     | 77660160/169001437 [00:04<00:05, 16399014.66it/s] 47%|████▋     | 79364096/169001437 [00:04<00:05, 16469590.75it/s] 48%|████▊     | 81068032/169001437 [00:04<00:05, 16575287.49it/s] 49%|████▉     | 82771968/169001437 [00:04<00:05, 16651803.73it/s] 50%|████▉     | 84475904/169001437 [00:04<00:05, 16735570.74it/s] 51%|█████     | 86179840/169001437 [00:04<00:04, 16824126.55it/s] 52%|█████▏    | 87916544/169001437 [00:05<00:04, 16923598.34it/s] 53%|█████▎    | 89653248/169001437 [00:05<00:04, 16989251.94it/s] 54%|█████▍    | 91389952/169001437 [00:05<00:04, 17010285.86it/s] 55%|█████▌    | 93126656/169001437 [00:05<00:04, 17041259.81it/s] 56%|█████▌    | 94863360/169001437 [00:05<00:04, 17089866.49it/s] 57%|█████▋    | 96600064/169001437 [00:05<00:04, 17112269.29it/s] 58%|█████▊    | 98369536/169001437 [00:05<00:04, 17212888.97it/s] 59%|█████▉    | 100139008/169001437 [00:05<00:03, 17246225.36it/s] 60%|██████    | 101908480/169001437 [00:05<00:03, 17344233.17it/s] 61%|██████▏   | 103677952/169001437 [00:05<00:03, 17332411.76it/s] 62%|██████▏   | 105480192/169001437 [00:06<00:03, 17454118.90it/s] 63%|██████▎   | 107249664/169001437 [00:06<00:03, 17471514.11it/s] 65%|██████▍   | 109051904/169001437 [00:06<00:03, 17555611.52it/s] 66%|██████▌   | 110821376/169001437 [00:06<00:03, 17587079.32it/s] 67%|██████▋   | 112590848/169001437 [00:06<00:03, 17574034.16it/s] 68%|██████▊   | 114360320/169001437 [00:06<00:03, 17605677.02it/s] 69%|██████▊   | 116162560/169001437 [00:06<00:02, 17668203.60it/s] 70%|██████▉   | 117964800/169001437 [00:06<00:02, 17693985.84it/s] 71%|███████   | 119767040/169001437 [00:06<00:02, 17726483.22it/s] 72%|███████▏  | 121569280/169001437 [00:06<00:02, 17751445.24it/s] 73%|███████▎  | 123371520/169001437 [00:07<00:02, 17774768.28it/s] 74%|███████▍  | 125173760/169001437 [00:07<00:02, 17803378.16it/s] 75%|███████▌  | 127008768/169001437 [00:07<00:02, 17823069.99it/s] 76%|███████▌  | 128843776/169001437 [00:07<00:02, 17901852.39it/s] 77%|███████▋  | 130678784/169001437 [00:07<00:02, 17960678.88it/s] 78%|███████▊  | 132481024/169001437 [00:07<00:02, 17924788.25it/s] 79%|███████▉  | 134316032/169001437 [00:07<00:01, 17975622.55it/s] 81%|████████  | 136151040/169001437 [00:07<00:01, 18019418.74it/s] 82%|████████▏ | 137953280/169001437 [00:07<00:01, 17978978.78it/s] 83%|████████▎ | 139788288/169001437 [00:08<00:01, 18008551.24it/s] 84%|████████▍ | 141623296/169001437 [00:08<00:01, 18069184.58it/s] 85%|████████▍ | 143458304/169001437 [00:08<00:01, 18083526.76it/s] 86%|████████▌ | 145293312/169001437 [00:08<00:01, 18073656.34it/s] 87%|████████▋ | 147128320/169001437 [00:08<00:01, 18088131.74it/s] 88%|████████▊ | 148963328/169001437 [00:08<00:01, 18103700.70it/s] 89%|████████▉ | 150798336/169001437 [00:08<00:01, 18138445.27it/s] 90%|█████████ | 152633344/169001437 [00:08<00:00, 18109369.32it/s] 91%|█████████▏| 154468352/169001437 [00:08<00:00, 18147665.37it/s] 92%|█████████▏| 156303360/169001437 [00:08<00:00, 18148829.08it/s] 94%|█████████▎| 158138368/169001437 [00:09<00:00, 18146882.99it/s] 95%|█████████▍| 159973376/169001437 [00:09<00:00, 18196854.23it/s] 96%|█████████▌| 161808384/169001437 [00:09<00:00, 18176523.84it/s] 97%|█████████▋| 163643392/169001437 [00:09<00:00, 18163915.05it/s] 98%|█████████▊| 165478400/169001437 [00:09<00:00, 18163750.58it/s] 99%|█████████▉| 167313408/169001437 [00:09<00:00, 18145058.88it/s]100%|██████████| 169001437/169001437 [00:09<00:00, 17666147.78it/s]
+Traceback (most recent call last):
+  File "/home/s33zganj/VERA/scripts/train.py", line 364, in <module>
+    main()
+  File "/home/s33zganj/VERA/scripts/train.py", line 235, in main
+    train(train_loader, model, loss_fn, opt, epoch)
+  File "/home/s33zganj/VERA/scripts/train.py", line 261, in train
+    output = model(ip)
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/s33zganj/VERA/scripts/vision_transformer.py", line 963, in forward
+    x = self.forward_features(x)
+  File "/home/s33zganj/VERA/scripts/vision_transformer.py", line 944, in forward_features
+    x = self.blocks(x)
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/nn/modules/container.py", line 217, in forward
+    input = module(input)
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/s33zganj/VERA/scripts/vision_transformer.py", line 229, in forward
+    x = x + self.drop_path1(self.ls1(self.attn(self.norm1(x))))
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/s33zganj/VERA/scripts/vision_transformer.py", line 102, in forward
+    q = Linear(
+  File "/home/s33zganj/VERA/scripts/layers.py", line 133, in __init__
+    super(nn.Linear, self).__init__()
+TypeError: VeraLayer.__init__() missing 1 required positional argument: 'base_layer'
+ERROR:torch.distributed.elastic.multiprocessing.api:failed (exitcode: 1) local_rank: 0 (pid: 410457) of binary: /home/s33zganj/pytorch/bin/python
+Traceback (most recent call last):
+  File "/home/s33zganj/pytorch/bin/torchrun", line 8, in <module>
+    sys.exit(main())
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 346, in wrapper
+    return f(*args, **kwargs)
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/distributed/run.py", line 794, in main
+    run(args)
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/distributed/run.py", line 785, in run
+    elastic_launch(
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/distributed/launcher/api.py", line 134, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/distributed/launcher/api.py", line 250, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+/home/s33zganj/VERA/scripts/train.py FAILED
+------------------------------------------------------------
+Failures:
+  <NO_OTHER_FAILURES>
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2024-11-04_12:21:15
+  host      : node-05.bender
+  rank      : 0 (local_rank: 0)
+  exitcode  : 1 (pid: 410457)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================
+srun: error: node-05: task 0: Exited with exit code 1

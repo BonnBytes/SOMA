@@ -1,0 +1,70 @@
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) Python/3.12.3-GCCcore-13.3.0
+
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) CUDA/12.4.0
+
+master_addr is only used for static rdzv_backend and when rdzv_endpoint is not specified.
+Traceback (most recent call last):
+  File "/home/s33zganj/VERA/scripts/train.py", line 364, in <module>
+    main()
+  File "/home/s33zganj/VERA/scripts/train.py", line 235, in main
+    train(train_loader, model, loss_fn, opt, epoch)
+  File "/home/s33zganj/VERA/scripts/train.py", line 261, in train
+    output = model(ip)
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/s33zganj/VERA/scripts/vision_transformer.py", line 970, in forward
+    x = self.forward_features(x)
+  File "/home/s33zganj/VERA/scripts/vision_transformer.py", line 951, in forward_features
+    x = self.blocks(x)
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/nn/modules/container.py", line 217, in forward
+    input = module(input)
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/s33zganj/VERA/scripts/vision_transformer.py", line 236, in forward
+    x = x + self.drop_path1(self.ls1(self.attn(self.norm1(x))))
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/s33zganj/VERA/scripts/vision_transformer.py", line 109, in forward
+    base_layer=self.q_proj(self.q_norm(q)),
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/nn/modules/linear.py", line 114, in forward
+    return F.linear(input, self.weight, self.bias)
+RuntimeError: mat1 and mat2 shapes cannot be multiplied (151296x64 and 768x768)
+ERROR:torch.distributed.elastic.multiprocessing.api:failed (exitcode: 1) local_rank: 0 (pid: 470662) of binary: /home/s33zganj/pytorch/bin/python
+Traceback (most recent call last):
+  File "/home/s33zganj/pytorch/bin/torchrun", line 8, in <module>
+    sys.exit(main())
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 346, in wrapper
+    return f(*args, **kwargs)
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/distributed/run.py", line 794, in main
+    run(args)
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/distributed/run.py", line 785, in run
+    elastic_launch(
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/distributed/launcher/api.py", line 134, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/distributed/launcher/api.py", line 250, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+/home/s33zganj/VERA/scripts/train.py FAILED
+------------------------------------------------------------
+Failures:
+  <NO_OTHER_FAILURES>
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2024-11-04_15:05:00
+  host      : node-05.bender
+  rank      : 0 (local_rank: 0)
+  exitcode  : 1 (pid: 470662)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================
+srun: error: node-05: task 0: Exited with exit code 1

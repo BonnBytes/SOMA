@@ -1,0 +1,11 @@
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) Python/3.12.3-GCCcore-13.3.0
+
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) CUDA/12.4.0
+
+master_addr is only used for static rdzv_backend and when rdzv_endpoint is not specified.
+/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/_functorch/deprecated.py:58: UserWarning: We've integrated functorch into PyTorch. As the final step of the integration, functorch.vmap is deprecated as of PyTorch 2.0 and will be deleted in a future version of PyTorch >= 2.3. Please use torch.vmap instead; see the PyTorch 2.0 release notes and/or the torch.func migration guide for more details https://pytorch.org/docs/master/func.migrating.html
+  warn_deprecated('vmap', 'torch.vmap')

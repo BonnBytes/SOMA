@@ -1,0 +1,44 @@
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) Python/3.12.3-GCCcore-13.3.0
+
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) CUDA/12.4.0
+
+master_addr is only used for static rdzv_backend and when rdzv_endpoint is not specified.
+Traceback (most recent call last):
+  File "/home/s33zganj/VERA/scripts/train.py", line 6, in <module>
+    from vision_transformer import vit_base_patch16_224, vit_base_patch32_224
+ImportError: cannot import name 'vit_base_patch16_224' from 'vision_transformer' (/home/s33zganj/VERA/scripts/vision_transformer.py)
+ERROR:torch.distributed.elastic.multiprocessing.api:failed (exitcode: 1) local_rank: 0 (pid: 4115159) of binary: /home/s33zganj/pytorch/bin/python
+Traceback (most recent call last):
+  File "/home/s33zganj/pytorch/bin/torchrun", line 8, in <module>
+    sys.exit(main())
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 346, in wrapper
+    return f(*args, **kwargs)
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/distributed/run.py", line 794, in main
+    run(args)
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/distributed/run.py", line 785, in run
+    elastic_launch(
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/distributed/launcher/api.py", line 134, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+  File "/home/s33zganj/pytorch/lib/python3.10/site-packages/torch/distributed/launcher/api.py", line 250, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+/home/s33zganj/VERA/scripts/train.py FAILED
+------------------------------------------------------------
+Failures:
+  <NO_OTHER_FAILURES>
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2024-11-01_13:49:59
+  host      : node-05.bender
+  rank      : 0 (local_rank: 0)
+  exitcode  : 1 (pid: 4115159)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================
+srun: error: node-05: task 0: Exited with exit code 1

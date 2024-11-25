@@ -1,0 +1,5 @@
+Namespace(epochs=100, batch_size=64, lr=0.001, momentum=0.9, resume=False, tensorboard=True, cpu=False, seed=42, model='VIST', peft='VERA', print_every=50, r=256, clip_norm=1, dataset='SVHN')
+Files already downloaded and verified
+Files already downloaded and verified
+Total #Parameters: 85.8125M
+Trainable #Parameters: 0.0139M

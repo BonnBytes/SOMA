@@ -1,0 +1,14 @@
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) Python/3.12.3-GCCcore-13.3.0
+
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) CUDA/12.4.0
+
+master_addr is only used for static rdzv_backend and when rdzv_endpoint is not specified.
+srun: Job step aborted: Waiting up to 602 seconds for job step to finish.
+slurmstepd: error: *** JOB 125208 ON node-05 CANCELLED AT 2024-11-07T18:44:14 ***
+slurmstepd: error: *** STEP 125208.0 ON node-05 CANCELLED AT 2024-11-07T18:44:14 ***
+WARNING:torch.distributed.elastic.agent.server.api:Received 15 death signal, shutting down workers
+WARNING:torch.distributed.elastic.multiprocessing.api:Sending process 2158349 closing signal SIGTERM
