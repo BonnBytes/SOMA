@@ -138,6 +138,7 @@ class Linear(nn.Linear, VeraLayer):
         # Calls update_layer to initialize or update the adapter-related parameters (vera_A, vera_B, etc.) and set up the layer for the adapter specified by adapter_name.
         self.update_layer(vera_A, vera_B, r, vera_dropout, init_weights, d_initial)
         self.is_target_conv_1d_layer = is_target_conv_1d_layer
+        self.scale = 0.7
 
     # safe_merge: If True, checks for numerical stability before merging.It ensures that potential issues with NaN values are caught before altering the base layer’s weights.
     # adapter_names: An optional parameter that can be a list of strings, specifying which adapters to merge. If it’s not provided, the function will merge all adapters.
@@ -199,7 +200,7 @@ class Linear(nn.Linear, VeraLayer):
         adapted_result = x @ re
         # print(re.shape)
         # Add the original base layer output with the adapted result.
-        result += adapted_result
+        result = result + self.scale * adapted_result
                     
         return result
 # operation effectively merges the contributions from the adapter into the final output, modifying it based on the learned parameters.
@@ -253,7 +254,7 @@ class MergedLinear(nn.Linear):
                 r=r,
                 vera_dropout=vera_dropout
             )
-        
+        self.scale = 0.7
 
     # x: torch.Tensor: This is the input tensor that will be passed through the model. It typically represents a batch of input data.
     def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
@@ -264,6 +265,6 @@ class MergedLinear(nn.Linear):
         V = self.v_proj(x)
         out = torch.cat([Q, K, V], dim=-1)
         # print(f"out{out.shape}")
-        result = result + out
+        result = result + self.scale * out
         return result
 # operation effectively merges the contributions from the adapter into the final output, modifying it based on the learned parameters.

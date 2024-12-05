@@ -9,7 +9,10 @@ from layers import Linear as VeraLinear
 from layers import MergedLinear as VeraMergedLinear
 from torch.nn.init import _calculate_correct_fan
 import math
-
+from vtab import get_data, get_classes_num
+from tqdm import tqdm
+import torch.nn.functional as F
+from timm.scheduler.cosine_lr import CosineLRScheduler
 # Configuration for VERA
 class VeraConfig:
     r = 256
@@ -91,30 +94,53 @@ def freeze_except_vera(model):
             param.requires_grad = False
 
 # Training loop
-def train_model(model, dataloader, criterion, optimizer, device, num_epochs=10):
+def train_model(model, dataloader, test_dataloader, optimizer, device,scheduler, num_epochs=10):
     model.to(device)
-    for epoch in range(num_epochs):
-        model.train()
-        running_loss = 0.0
-        for inputs, labels in dataloader:
-            inputs, labels = inputs.to(device), labels.to(device)
+    model.train()
+    for ep in (pbar:=tqdm(range(num_epochs))):
+        for i, batch in enumerate(dataloader):
+            x, y = batch[0].cuda(), batch[1].cuda()
+            out = model(x)
+            loss = F.cross_entropy(out, y)
             optimizer.zero_grad()
-            # print(inputs.shape)
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
-            running_loss += loss.item()
+        if scheduler is not None:
+            scheduler.step(ep)
+        acc = test(model, test_dataloader)
+        print(f"Epoch: {ep}, Accuracy: {acc}")
+        pbar.set_description(f"Accuracy: {str(acc*100)}")
+    model = model.cpu()
+    return model
 
-        print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(dataloader)}")
+@torch.no_grad()
+def test(model, dl):
+    model.eval()
+    acc = []
+    ex = []
+    model = model.cuda()
+    for batch in dl:
+        x, y =  batch[0].cuda(), batch[1].cuda()
+        out = model(x).data
+        out = torch.argmax(out, dim=1)
+        correct = (out == y).float()
+        acc.append(correct.sum())
+        ex.append(len(y))
+    ac = sum(acc) / sum(ex)
+    return round(ac.cpu().item(), 4)
 
 # Main script
 def main():
+
+    # name = "cifar"
+    # train_dl, test_dl = get_data(name)
+    # num_classes = get_classes_num(name)
+
     # Device setup
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Load pretrained ViT model
-    model = create_model("vit_base_patch16_224_in21k", pretrained=True)
+    model = create_model("vit_base_patch16_224_in21k", pretrained=True, drop_path_rate=0.1)
     # for name, module in model.named_modules():
     #     print(name, type(module))
 
@@ -126,6 +152,7 @@ def main():
     total_params = sum(p.numel() for p in model.parameters())
     total_params = round(total_params / 1000000, 4)
     print(f"Total #Parameters: {total_params}M")
+    
     # Apply VERA to the attention layers
     vera_config = VeraConfig()
     linear_out_dim, linear_in_dim = _find_dim(model)
@@ -144,7 +171,7 @@ def main():
     trainable_params = round(trainable_params / 1000000, 4)
     
     print(f"Trainable #Parameters: {trainable_params}M")
-
+    model.reset_classifier(100)
     # Dataset and DataLoader for CIFAR-100
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -154,12 +181,18 @@ def main():
     train_dataset = datasets.CIFAR100(root="./data", train=True, download=True, transform=transform)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=256, shuffle=True)
 
+    # Test dataset and dataloader
+    test_dataset = datasets.CIFAR100(root="./data", train=False, download=True, transform=transform)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=256, shuffle=False)
+    
     # Define loss function and optimizer
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=5e-5)
-
+    optimizer = torch.optim.AdamW(model.parameters(), lr=2e-2, weight_decay=0.01)
     # Train the model
-    train_model(model, train_loader, criterion, optimizer, device)
+    # scheduler = None
+    scheduler = CosineLRScheduler(optimizer, t_initial=100)
+    model = train_model(model,train_loader, test_loader, optimizer, device, scheduler)
+    facc = test(model, test_loader)
+    print(f"Final Accuracy: {facc*100}")
 
 if __name__ == "__main__":
     main()
