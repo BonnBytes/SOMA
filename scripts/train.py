@@ -13,6 +13,8 @@ from vtab import get_data, get_classes_num
 from tqdm import tqdm
 import torch.nn.functional as F
 from timm.scheduler.cosine_lr import CosineLRScheduler
+import numpy as np
+from scipy.linalg import hadamard
 # Configuration for VERA
 class VeraConfig:
     r = 256
@@ -49,13 +51,72 @@ def _kaiming_init(shape: tuple[int, ...], generator: torch.Generator) -> torch.T
         # The uniform distribution ensures that the initial weights are distributed between -bound and bound, with a variance that is compatible with the requirements of Kaiming initialization for ReLU.The generator is used to control the randomness.
         return torch.empty(shape).uniform_(-bound, bound, generator=generator)
 
+
+
+
+def matmul_wht(x, h_mat=None, inverse=False):
+    """
+    Welsh-Hadamard transform by matrix multiplication.
+    @ param x: The sequence to be transformed [batchsize, seq_len].
+    @ param inverse: If true computes the inverse transform.
+    """
+    n = x.shape[-1]
+
+    if h_mat is None:
+        h_mat = torch.from_numpy(hadamard(n).astype(np.float32))
+        if x.device.type == 'cuda':
+            h_mat = h_mat.cuda()
+    y = torch.nn.functional.linear(x, h_mat, bias=None)
+    if not inverse:
+        y = y/n
+    return y
+
+def svd_init(shape: tuple[int, int], generator: torch.Generator) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Initializes a weight matrix using Singular Value Decomposition (SVD).
+    Returns U, Sigma, and V^T matrices.
+    """
+    rows, cols = shape
+    random_matrix = torch.randn(rows, cols, generator=generator)
+
+    # Perform SVD decomposition
+    U, S, Vt = torch.linalg.svd(random_matrix, full_matrices=False)
+    
+    # Normalize singular values (S) to mimic fan-in initialization
+    fan_in = _calculate_correct_fan(torch.empty(shape), "fan_in")
+    gain = math.sqrt(2)  # For ReLU activation
+    std = gain / math.sqrt(fan_in)
+    S = S / S.max() * std  # Scale singular values
+
+    return U, S, Vt
+
 # Function to apply VERA modifications to the attention layers
 def apply_vera_to_attention(model, vera_config, linear_out_dim, linear_in_dim):
     # print("yeeessssssssssssssssssssssss222222")
-    generator = torch.Generator(device="cpu").manual_seed(0)
-    vera_A = _kaiming_init((vera_config.r, linear_in_dim), generator)
-    vera_B = _kaiming_init((linear_out_dim, vera_config.r), generator)
+    # Check if linear_in_dim is a power of two
+    new_in_dim = 0
+    if (linear_in_dim & (linear_in_dim - 1)) != 0:  # Not a power of two
+        new_in_dim = 2 ** math.ceil(math.log2(linear_in_dim))
+    else:
+        new_in_dim = linear_in_dim
 
+    generator = torch.Generator(device="cpu").manual_seed(0)
+    vera_A_kaiming = _kaiming_init((vera_config.r, new_in_dim), generator)
+    vera_B_kaiming = _kaiming_init((linear_out_dim, vera_config.r), generator)
+    # 
+
+    vera_A = matmul_wht(vera_A_kaiming)
+    vera_B = matmul_wht(vera_B_kaiming)
+    print(vera_A.shape)
+    print(vera_B.shape)
+
+    # # SVD initialization
+    # U_A, S_A, Vt_A = svd_init((vera_config.r, linear_in_dim), generator)
+    # U_B, S_B, Vt_B = svd_init((linear_out_dim, vera_config.r), generator)
+    
+    # # Construct A and B matrices with perturbations for training
+    # vera_A = U_A @ torch.diag(S_A) @ Vt_A  # A = U Σ V^T
+    # vera_B = U_B @ torch.diag(S_B) @ Vt_B  # B = U Σ V^T
     
     qkv_layers = []
     proj_layers = []
@@ -160,8 +221,8 @@ def main():
     # print(linear_out_dim)
     model = apply_vera_to_attention(model, vera_config, linear_out_dim, linear_in_dim )
 
-    # for name, param in model.named_parameters():
-    #     print(f"{name}: {param.data.shape}")
+    for name, param in model.named_parameters():
+        print(f"{name}: {param.data.shape}")
 
     # Freeze all parameters except lambda_b and lambda_d
     freeze_except_vera(model)
