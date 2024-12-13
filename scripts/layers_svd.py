@@ -79,13 +79,13 @@ class VeraLayer(nn.Module):
         self.vera_dropout = nn.Dropout(p=vera_dropout) if vera_dropout > 0.0 else nn.Identity()
         # print(f"in features in layers.py:{self.in_features}, out:{self.out_features}")
         self.vera_lambda_b = nn.Parameter(torch.ones(self.out_features), requires_grad=True)
-        # self.vera_lambda_d = nn.Parameter(torch.randn(r), requires_grad=True)
+        self.vera_lambda_d = nn.Parameter(torch.randn(r), requires_grad=True)
         # print(self.vera_lambda_b.shape)
 
-        B, lambda_d , A = torch.linalg.svd(self.base_layer.weight, full_matrices=False)
-        self.vera_B = B[:, :r]          # (n x r)
-        self.vera_lambda_d = lambda_d[:r] # (r)
-        self.vera_A = A[:r, :]        # (r x n)
+        self.vera_B, lambda_d , self.vera_A = torch.linalg.svd(self.base_layer.weight, full_matrices=False)
+        self.vera_B = self.vera_B[:, :r]
+        self.vera_lambda_d.data = lambda_d[:r]
+        self.vera_A = self.vera_A[:r, :]
 
         print(f"base layer:{self.base_layer.weight.shape}")
         print(f"self.vera_A:{self.vera_A.shape}")
@@ -109,7 +109,7 @@ class VeraLayer(nn.Module):
 
     def reset_vera_parameters(self, d_initial: float = 0.1):
         with torch.no_grad():
-            nn.init.zeros_(self.vera_lambda_d).fill_(d_initial)
+            #nn.init.zeros_(self.vera_lambda_d).fill_(d_initial)
             nn.init.zeros_(self.vera_lambda_b)
 
     def _move_adapter_to_device_of_base_layer(self):
@@ -117,6 +117,8 @@ class VeraLayer(nn.Module):
         device = self.base_layer.weight.device
         self.vera_lambda_b = self.vera_lambda_b.to(device)
         self.vera_lambda_d = self.vera_lambda_d.to(device)
+        self.vera_B = self.vera_B.to(device)
+        self.vera_A = self.vera_A.to(device)
 
    
 
@@ -157,21 +159,21 @@ class Linear(nn.Linear, VeraLayer):
         device = self.base_layer.weight.device
 
         #  Each active_adapter in self.active_adapters will be processed in the upcoming steps to modify the result.
-        sliced_A = self.vera_A.to(device)
+        # sliced_A = self.vera_A.to(device)
         # print(sliced_A.shape)
         # print(self.in_features)
-        sliced_B = self.vera_B.to(device)
+        # sliced_B = self.vera_B.to(device)
         # print(sliced_B.shape)
         # print(self.out_features)
         
 
-        lambda_d = self.vera_lambda_d.to(device)
-        lambda_b = self.vera_lambda_b.to(device)
+        # lambda_d = self.vera_lambda_d.to(device)
+        # lambda_b = self.vera_lambda_b.to(device)
         # print(lambda_d.shape)
         # print(lambda_b.shape)
         # print(x.shape)
         # print(result.shape)
-        re = torch.diag(lambda_b) @ sliced_B @ torch.diag(lambda_d) @ sliced_A
+        re = torch.diag(self.vera_lambda_b) @ self.vera_B.to(device) @ torch.diag(self.vera_lambda_d) @ self.vera_A.to(device)
         # print("reeeee")
         # print(re.shape)
         adapted_result = x @ re
@@ -235,8 +237,9 @@ class MergedLinear(nn.Linear):
         # First, it performs a standard forward pass through the base_layer (which is the underlying nn.Linear or similar layer).
         result = super().forward(x)
         Q = self.q_proj(x)
-        K = self.k_proj(x)
+        #K = self.k_proj(x)
         V = self.v_proj(x)
+        K = torch.zeros_like(V)
         out = torch.cat([Q, K, V], dim=-1)
         # print(f"out{out.shape}")
         result = result + self.scale * out

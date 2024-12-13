@@ -148,7 +148,7 @@ def apply_vera_to_attention_SVD(model, vera_config, linear_out_dim, linear_in_di
         print(f"mod.weight:{mod.weight.shape}")
         new_mod = VeraSVDLinear(
             base_layer=model.get_submodule(".".join(parent))[int(k)].attn.qkv,
-            weight = mod.weight,
+            weight = mod.weight.data,
             r=vera_config.r,
             vera_dropout=vera_config.vera_dropout,
             )
@@ -171,19 +171,26 @@ def freeze_except_vera(model):
 def train_model(model, dataloader, test_dataloader, optimizer, device,scheduler, num_epochs=10):
     model.to(device)
     model.train()
+    loss_fn = torch.nn.CrossEntropyLoss()
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            print(f"#######Hello from {name}")
     for ep in (pbar:=tqdm(range(num_epochs))):
         for i, batch in enumerate(dataloader):
+            optimizer.zero_grad()
             x, y = batch[0].cuda(), batch[1].cuda()
             out = model(x)
-            loss = F.cross_entropy(out, y)
-            optimizer.zero_grad()
-            loss.backward()
+            loss = loss_fn(out, y)
+            #optimizer.zero_grad()
+            loss.backward(retain_graph=True)
             optimizer.step()
+            pbar.set_description(f"Lossy: {loss.item()}")
+            breakpoint
         if scheduler is not None:
             scheduler.step(ep)
         acc = test(model, test_dataloader)
-        print(f"Epoch: {ep}, Accuracy: {acc}")
-        pbar.set_description(f"Accuracy: {str(acc*100)}")
+        #print(f"Epoch: {ep}, Accuracy: {acc}")
+        #pbar.set_description(f"Accuracy: {str(acc*100)}")
     model = model.cpu()
     return model
 
