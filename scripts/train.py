@@ -7,6 +7,7 @@ from timm.models.vision_transformer import VisionTransformer, Attention
 from buffer_dict import BufferDict  # Assuming this is implemented
 from layers import Linear as VeraLinear
 from layers import MergedLinear as VeraMergedLinear
+from layers_svd import MergedLinear as VeraSVDLinear
 from torch.nn.init import _calculate_correct_fan
 import math
 from vtab import get_data, get_classes_num
@@ -71,24 +72,7 @@ def matmul_wht(x, h_mat=None, inverse=False):
         y = y/n
     return y
 
-def svd_init(shape: tuple[int, int], generator: torch.Generator) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """
-    Initializes a weight matrix using Singular Value Decomposition (SVD).
-    Returns U, Sigma, and V^T matrices.
-    """
-    rows, cols = shape
-    random_matrix = torch.randn(rows, cols, generator=generator)
 
-    # Perform SVD decomposition
-    U, S, Vt = torch.linalg.svd(random_matrix, full_matrices=False)
-    
-    # Normalize singular values (S) to mimic fan-in initialization
-    fan_in = _calculate_correct_fan(torch.empty(shape), "fan_in")
-    gain = math.sqrt(2)  # For ReLU activation
-    std = gain / math.sqrt(fan_in)
-    S = S / S.max() * std  # Scale singular values
-
-    return U, S, Vt
 
 # Function to apply VERA modifications to the attention layers
 def apply_vera_to_attention(model, vera_config, linear_out_dim, linear_in_dim):
@@ -145,6 +129,35 @@ def apply_vera_to_attention(model, vera_config, linear_out_dim, linear_in_dim):
 
     return model
 
+# Function to apply VERA modifications to the attention layers
+def apply_vera_to_attention_SVD(model, vera_config, linear_out_dim, linear_in_dim):
+
+    qkv_layers = []
+    proj_layers = []
+
+    for name, _ in model.named_modules():
+        if "qkv" in name:
+            qkv_layers.append(name.split("."))
+        if name[-5:] == ".proj" and "patch_embed" not in name:
+            proj_layers.append(name.split("."))
+
+    for idx, (*parent, k, _, _) in enumerate(qkv_layers):
+        nm = '.'.join(qkv_layers[idx])
+        mod = model.get_submodule(nm)
+        b = True if mod.bias is not None else False
+        print(f"mod.weight:{mod.weight.shape}")
+        new_mod = VeraSVDLinear(
+            base_layer=model.get_submodule(".".join(parent))[int(k)].attn.qkv,
+            weight = mod.weight,
+            r=vera_config.r,
+            vera_dropout=vera_config.vera_dropout,
+            )
+        new_mod.weight = mod.weight
+        new_mod.bias = mod.bias if b else None
+        model.get_submodule(".".join(parent))[int(k)].attn.qkv = new_mod
+
+
+    return model
 
 # Freeze all parameters except lambda_b and lambda_d in the VERA layers
 def freeze_except_vera(model):
@@ -219,10 +232,10 @@ def main():
     linear_out_dim, linear_in_dim = _find_dim(model)
     # print(linear_in_dim)
     # print(linear_out_dim)
-    model = apply_vera_to_attention(model, vera_config, linear_out_dim, linear_in_dim )
+    model = apply_vera_to_attention_SVD(model, vera_config, linear_out_dim, linear_in_dim)
 
-    for name, param in model.named_parameters():
-        print(f"{name}: {param.data.shape}")
+    # for name, param in model.named_parameters():
+    #     print(f"{name}: {param.data.shape}")
 
     # Freeze all parameters except lambda_b and lambda_d
     freeze_except_vera(model)
