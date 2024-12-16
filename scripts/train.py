@@ -10,7 +10,6 @@ from layers import MergedLinear as VeraMergedLinear
 from layers_svd import MergedLinear as VeraSVDLinear
 from torch.nn.init import _calculate_correct_fan
 import math
-from vtab import get_data, get_classes_num
 from tqdm import tqdm
 import torch.nn.functional as F
 from timm.scheduler.cosine_lr import CosineLRScheduler
@@ -172,9 +171,6 @@ def train_model(model, dataloader, test_dataloader, optimizer, device,scheduler,
     model.to(device)
     model.train()
     loss_fn = torch.nn.CrossEntropyLoss()
-    for name, param in model.named_parameters():
-        if param.requires_grad:
-            print(f"#######Hello from {name}")
     for ep in (pbar:=tqdm(range(num_epochs))):
         for i, batch in enumerate(dataloader):
             optimizer.zero_grad()
@@ -182,7 +178,7 @@ def train_model(model, dataloader, test_dataloader, optimizer, device,scheduler,
             out = model(x)
             loss = loss_fn(out, y)
             #optimizer.zero_grad()
-            loss.backward(retain_graph=True)
+            loss.backward()
             optimizer.step()
             pbar.set_description(f"Lossy: {loss.item()}")
             breakpoint
