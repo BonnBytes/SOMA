@@ -185,7 +185,7 @@ def train_model(model, dataloader, test_dataloader, optimizer, device,scheduler,
         if scheduler is not None:
             scheduler.step(ep)
         acc = test(model, test_dataloader)
-        #print(f"Epoch: {ep}, Accuracy: {acc}")
+        print(f"Epoch: {ep}, Accuracy: {acc}")
         #pbar.set_description(f"Accuracy: {str(acc*100)}")
     model = model.cpu()
     return model
@@ -235,7 +235,7 @@ def main():
     linear_out_dim, linear_in_dim = _find_dim(model)
     # print(linear_in_dim)
     # print(linear_out_dim)
-    model = apply_vera_to_attention_SVD(model, vera_config, linear_out_dim, linear_in_dim)
+    model = apply_vera_to_attention(model, vera_config, linear_out_dim, linear_in_dim)
 
     # for name, param in model.named_parameters():
     #     print(f"{name}: {param.data.shape}")

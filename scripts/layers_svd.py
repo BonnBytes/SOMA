@@ -76,7 +76,13 @@ class VeraLayer(nn.Module):
         if r <= 0:
             raise ValueError(f"`r` should be a positive integer value but the value passed is {r}")
         self.r = r
-        self.vera_dropout = nn.Dropout(p=vera_dropout) if vera_dropout > 0.0 else nn.Identity()
+        if vera_dropout > 0.0:
+            vera_dropout_layer = nn.Dropout(p=vera_dropout)
+        else:
+            vera_dropout_layer = nn.Identity()
+
+        self.vera_dropout.update(nn.ModuleDict({"vera": vera_dropout_layer}))
+
         # print(f"in features in layers.py:{self.in_features}, out:{self.out_features}")
         self.vera_lambda_b = nn.Parameter(torch.ones(self.out_features), requires_grad=True)
         self.vera_lambda_d = nn.Parameter(torch.randn(r), requires_grad=True)
@@ -87,11 +93,11 @@ class VeraLayer(nn.Module):
         self.vera_lambda_d.data = lambda_d[:r]
         self.vera_A = nn.Parameter(vera_A[:r, :], requires_grad=False)
 
-        print(f"base layer:{self.base_layer.weight.shape}")
-        print(f"self.vera_A:{self.vera_A.shape}")
-        print(f"self.vera_B:{self.vera_B.shape}")
-        print(f"self.vera_lambda_d:{ self.vera_lambda_d.shape}")
-        print(f"self.vera_lambda_b:{ self.vera_lambda_b.shape}")
+        # print(f"base layer:{self.base_layer.weight.shape}")
+        # print(f"self.vera_A:{self.vera_A.shape}")
+        # print(f"self.vera_B:{self.vera_B.shape}")
+        # print(f"self.vera_lambda_d:{ self.vera_lambda_d.shape}")
+        # print(f"self.vera_lambda_b:{ self.vera_lambda_b.shape}")
         if len(self.vera_A) < 1:
             raise ValueError("The `vera_A` and `vera_B` buffers are empty. This should not happen.")
 
@@ -155,6 +161,7 @@ class Linear(nn.Linear, VeraLayer):
     def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         # First, it performs a standard forward pass through the base_layer (which is the underlying nn.Linear or similar layer).
         # print(f"xlinear{x.shape}")
+        previous_dtype = x.dtype
         result = self.base_layer(x, *args, **kwargs)
         device = self.base_layer.weight.device
 
@@ -169,17 +176,20 @@ class Linear(nn.Linear, VeraLayer):
 
         # lambda_d = self.vera_lambda_d.to(device)
         # lambda_b = self.vera_lambda_b.to(device)
-        # print(lambda_d.shape)
-        # print(lambda_b.shape)
-        # print(x.shape)
-        # print(result.shape)
-        re = torch.diag(self.vera_lambda_b) @ self.vera_B.to(device) @ torch.diag(self.vera_lambda_d) @ self.vera_A.to(device)
-        # print("reeeee")
-        # print(re.shape)
-        adapted_result = x @ re
-        # print(re.shape)
-        # Add the original base layer output with the adapted result.
-        result = result + self.scale * adapted_result
+
+        # re = torch.diag(self.vera_lambda_b) @ self.vera_B.to(device) @ torch.diag(self.vera_lambda_d) @ self.vera_A.to(device)
+        # adapted_result = x @ re
+        # # Add the original base layer output with the adapted result.
+        # result = result + self.scale * adapted_result
+
+        lambda_d = self.vera_lambda_d.to(device)
+        lambda_b = self.vera_lambda_b.to(device)
+        A = self.vera_A.to(device)
+        B = self.vera_B.to(device)
+        
+        dropout = self.vera_dropout["vera"]
+        result = result + lambda_b * F.linear(lambda_d * F.linear(dropout(x), A), B)
+        result = result.to(previous_dtype)
                     
         return result
 # operation effectively merges the contributions from the adapter into the final output, modifying it based on the learned parameters.
@@ -215,22 +225,32 @@ class MergedLinear(nn.Linear):
         # Calls update_layer to initialize or update the adapter-related parameters (vera_A, vera_B, etc.) and set up the layer for the adapter specified by adapter_name.
         # self.update_layer(vera_A, vera_B, r, vera_dropout, init_weights, d_initial)
         self.is_target_conv_1d_layer = is_target_conv_1d_layer
-          # Separate linear layers for q and v
-        self.qkv = nn.Linear(self.dim, self.dim * 3)
+        # Split thpe weight tensor into Q, K, V components
+        weight_q, weight_k, weight_v = torch.split(weight, self.dim, dim=0)
+
+        # Initialize projection layers
+        q = nn.Linear(self.base_layer.in_features, self.dim)
+        v = nn.Linear(self.base_layer.in_features, self.dim)
+
+        # Assign weights and biases
+        with torch.no_grad():
+            q.weight.copy_(weight_q)
+            v.weight.copy_(weight_v)
+
+        # Separate linear layers for q and v
         self.q_proj = Linear(
-                base_layer=nn.Linear(self.base_layer.in_features, self.dim),
+                base_layer= q,
                 weight= weight,
                 r=r,
                 vera_dropout=vera_dropout
             )
-        self.k_proj = nn.Linear(self.base_layer.in_features, self.dim)  # Keep original key projection
         self.v_proj = Linear(
-                base_layer=nn.Linear(self.base_layer.in_features, self.dim),
+                base_layer= v,
                 weight=weight,
                 r=r,
                 vera_dropout=vera_dropout
             )
-        self.scale = 0.7
+        self.scale = 1
 
     # x: torch.Tensor: This is the input tensor that will be passed through the model. It typically represents a batch of input data.
     def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
@@ -242,6 +262,6 @@ class MergedLinear(nn.Linear):
         K = torch.zeros_like(V)
         out = torch.cat([Q, K, V], dim=-1)
         # print(f"out{out.shape}")
-        result = result + self.scale * out
+        result = result +  self.scale * out
         return result
 # operation effectively merges the contributions from the adapter into the final output, modifying it based on the learned parameters.
