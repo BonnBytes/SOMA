@@ -235,7 +235,7 @@ def main():
     linear_out_dim, linear_in_dim = _find_dim(model)
     # print(linear_in_dim)
     # print(linear_out_dim)
-    model = apply_vera_to_attention(model, vera_config, linear_out_dim, linear_in_dim)
+    model = apply_vera_to_attention_SVD(model, vera_config, linear_out_dim, linear_in_dim)
 
     # for name, param in model.named_parameters():
     #     print(f"{name}: {param.data.shape}")
@@ -263,10 +263,25 @@ def main():
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=256, shuffle=False)
     
     # Define loss function and optimizer
-    optimizer = torch.optim.AdamW(model.parameters(), lr=2e-2, weight_decay=0.01)
+    optimizer = torch.optim.AdamW(
+        [
+            {"params": model.head.parameters(), "lr": 4e-3},  # Higher learning rate for the classification head
+            {"params": (p for n, p in model.named_parameters() if n.startswith("vera_lambda") and p.requires_grad)},
+        ],
+        lr=2e-2,  # Default learning rate for other layers
+        weight_decay=0.01,
+    )
+    # optimizer = torch.optim.AdamW(model.parameters(), lr=2e-2, weight_decay=0.01)
     # Train the model
     # scheduler = None
-    scheduler = CosineLRScheduler(optimizer, t_initial=100)
+    # Linear learning rate scheduler with warmup
+    scheduler = torch.optim.lr_scheduler.LinearLR(
+    optimizer,
+    start_factor=1.0,   # Start with the initial learning rate
+    end_factor=0.01,    # Final learning rate as a fraction of the initial learning rate
+    total_iters=10     # Number of epochs for the linear decay
+    )
+    # scheduler = CosineLRScheduler(optimizer, t_initial=100)
     model = train_model(model,train_loader, test_loader, optimizer, device, scheduler)
     facc = test(model, test_loader)
     print(f"Final Accuracy: {facc*100}")

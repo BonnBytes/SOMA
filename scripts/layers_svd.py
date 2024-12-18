@@ -250,7 +250,7 @@ class MergedLinear(nn.Linear):
                 r=r,
                 vera_dropout=vera_dropout
             )
-        self.scale = 1
+        self.scale = 0.4
 
     # x: torch.Tensor: This is the input tensor that will be passed through the model. It typically represents a batch of input data.
     def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
