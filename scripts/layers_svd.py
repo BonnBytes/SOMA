@@ -85,12 +85,12 @@ class VeraLayer(nn.Module):
 
         # print(f"in features in layers.py:{self.in_features}, out:{self.out_features}")
         self.vera_lambda_b = nn.Parameter(torch.ones(self.out_features), requires_grad=True)
-        self.vera_lambda_d = nn.Parameter(torch.randn(r), requires_grad=True)
+        # self.vera_lambda_d = nn.Parameter(torch.randn(r), requires_grad=True)
         # print(self.vera_lambda_b.shape)
 
         vera_B, lambda_d , vera_A = torch.linalg.svd(self.base_layer.weight, full_matrices=False)
         self.vera_B = nn.Parameter(vera_B[:, :r], requires_grad=False)
-        self.vera_lambda_d.data = lambda_d[:r]
+        self.vera_lambda_d = nn.Parameter(lambda_d[:r], requires_grad=True)
         self.vera_A = nn.Parameter(vera_A[:r, :], requires_grad=False)
 
         # print(f"base layer:{self.base_layer.weight.shape}")
@@ -166,30 +166,44 @@ class Linear(nn.Linear, VeraLayer):
         device = self.base_layer.weight.device
 
         #  Each active_adapter in self.active_adapters will be processed in the upcoming steps to modify the result.
-        # sliced_A = self.vera_A.to(device)
+        sliced_A = self.vera_A.to(device)
         # print(sliced_A.shape)
         # print(self.in_features)
-        # sliced_B = self.vera_B.to(device)
+        sliced_B = self.vera_B.to(device)
         # print(sliced_B.shape)
         # print(self.out_features)
         
 
-        # lambda_d = self.vera_lambda_d.to(device)
-        # lambda_b = self.vera_lambda_b.to(device)
-
-        # re = torch.diag(self.vera_lambda_b) @ self.vera_B.to(device) @ torch.diag(self.vera_lambda_d) @ self.vera_A.to(device)
-        # adapted_result = x @ re
-        # # Add the original base layer output with the adapted result.
-        # result = result + self.scale * adapted_result
-
         lambda_d = self.vera_lambda_d.to(device)
         lambda_b = self.vera_lambda_b.to(device)
-        A = self.vera_A.to(device)
-        B = self.vera_B.to(device)
-        
+        # print(lambda_d.shape)
+        # print(lambda_b.shape)
+        # print(x.shape)
+        # print(result.shape)
+        # re = torch.diag(self.vera_lambda_b) @ self.vera_B.to(device) @ torch.diag(self.vera_lambda_d) @ self.vera_A.to(device)
+        # # print("reeeee")
+        # # print(re.shape)
+        # adapted_result = x @ re
+        # # print(re.shape)
+        # # Add the original base layer output with the adapted result.
+        # result = result +  adapted_result
         dropout = self.vera_dropout["vera"]
-        result = result + lambda_b * F.linear(lambda_d * F.linear(dropout(x), A), B)
-        result = result.to(previous_dtype)
+        # x = x.to(lambda_d.dtype)
+        fin_res = torch.diag(lambda_b) @ sliced_B @ torch.diag(lambda_d) @ sliced_A  
+        adapted_result = dropout(x) @ fin_res
+        result = result +  adapted_result
+        # result = result.to(previous_dtype)
+        # print(f"x:{x.shape}")
+        # print(f"B:{sliced_B.shape}")
+        # print(f"d:{lambda_d.shape}")
+        # print(f"b:{lambda_b.shape}")
+        # print(f"res:{res.shape}")
+        # print(f"fin_res:{fin_res.shape}")
+
+        # dropout = self.vera_dropout["vera"]
+        # x = x.to(lambda_d.dtype)
+        # result = result + lambda_b * F.linear(lambda_d * F.linear(dropout(x), sliced_A), sliced_B)
+        # result = result.to(previous_dtype)
                     
         return result
 # operation effectively merges the contributions from the adapter into the final output, modifying it based on the learned parameters.
@@ -201,6 +215,7 @@ class MergedLinear(nn.Linear):
         weight,     
         r: int = 0,
         vera_dropout: float = 0.0,
+        scale: float = 0,
         num_heads: int = 12,
         embed_dim: int = 768,
         fan_in_fan_out: bool = False,
@@ -250,7 +265,7 @@ class MergedLinear(nn.Linear):
                 r=r,
                 vera_dropout=vera_dropout
             )
-        self.scale = 0.4
+        self.scale = scale
 
     # x: torch.Tensor: This is the input tensor that will be passed through the model. It typically represents a batch of input data.
     def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
@@ -262,6 +277,6 @@ class MergedLinear(nn.Linear):
         K = torch.zeros_like(V)
         out = torch.cat([Q, K, V], dim=-1)
         # print(f"out{out.shape}")
-        result = result +  self.scale * out
+        result = result + self.scale * out
         return result
 # operation effectively merges the contributions from the adapter into the final output, modifying it based on the learned parameters.

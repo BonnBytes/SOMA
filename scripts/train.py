@@ -15,6 +15,9 @@ import torch.nn.functional as F
 from timm.scheduler.cosine_lr import CosineLRScheduler
 import numpy as np
 from scipy.linalg import hadamard
+import random
+import matplotlib.pyplot as plt
+
 # Configuration for VERA
 class VeraConfig:
     r = 256
@@ -74,7 +77,7 @@ def matmul_wht(x, h_mat=None, inverse=False):
 
 
 # Function to apply VERA modifications to the attention layers
-def apply_vera_to_attention(model, vera_config, linear_out_dim, linear_in_dim):
+def apply_vera_to_attention(model, vera_config, linear_out_dim, linear_in_dim, scale):
     # print("yeeessssssssssssssssssssssss222222")
     # Check if linear_in_dim is a power of two
     new_in_dim = 0
@@ -90,8 +93,8 @@ def apply_vera_to_attention(model, vera_config, linear_out_dim, linear_in_dim):
 
     vera_A = matmul_wht(vera_A_kaiming)
     vera_B = matmul_wht(vera_B_kaiming)
-    print(vera_A.shape)
-    print(vera_B.shape)
+    # print(vera_A.shape)
+    # print(vera_B.shape)
 
     # # SVD initialization
     # U_A, S_A, Vt_A = svd_init((vera_config.r, linear_in_dim), generator)
@@ -120,6 +123,7 @@ def apply_vera_to_attention(model, vera_config, linear_out_dim, linear_in_dim):
             vera_B=vera_B,
             r=vera_config.r,
             vera_dropout=vera_config.vera_dropout,
+            scale = scale
             )
         new_mod.weight = mod.weight
         new_mod.bias = mod.bias if b else None
@@ -129,7 +133,7 @@ def apply_vera_to_attention(model, vera_config, linear_out_dim, linear_in_dim):
     return model
 
 # Function to apply VERA modifications to the attention layers
-def apply_vera_to_attention_SVD(model, vera_config, linear_out_dim, linear_in_dim):
+def apply_vera_to_attention_SVD(model, vera_config, linear_out_dim, linear_in_dim, scale):
 
     qkv_layers = []
     proj_layers = []
@@ -144,12 +148,13 @@ def apply_vera_to_attention_SVD(model, vera_config, linear_out_dim, linear_in_di
         nm = '.'.join(qkv_layers[idx])
         mod = model.get_submodule(nm)
         b = True if mod.bias is not None else False
-        print(f"mod.weight:{mod.weight.shape}")
+        # print(f"mod.weight:{mod.weight.shape}")
         new_mod = VeraSVDLinear(
             base_layer=model.get_submodule(".".join(parent))[int(k)].attn.qkv,
             weight = mod.weight.data,
             r=vera_config.r,
             vera_dropout=vera_config.vera_dropout,
+            scale = scale
             )
         new_mod.weight = mod.weight
         new_mod.bias = mod.bias if b else None
@@ -171,7 +176,9 @@ def train_model(model, dataloader, test_dataloader, optimizer, device,scheduler,
     model.to(device)
     model.train()
     loss_fn = torch.nn.CrossEntropyLoss()
+    epoch_losses = []
     for ep in (pbar:=tqdm(range(num_epochs))):
+        batch_losses = []
         for i, batch in enumerate(dataloader):
             optimizer.zero_grad()
             x, y = batch[0].cuda(), batch[1].cuda()
@@ -180,15 +187,20 @@ def train_model(model, dataloader, test_dataloader, optimizer, device,scheduler,
             #optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+
+            batch_losses.append(loss.item())
+
             pbar.set_description(f"Lossy: {loss.item()}")
-            breakpoint
+        
+        epoch_losses.append(np.mean(batch_losses))
         if scheduler is not None:
             scheduler.step(ep)
         acc = test(model, test_dataloader)
         print(f"Epoch: {ep}, Accuracy: {acc}")
         #pbar.set_description(f"Accuracy: {str(acc*100)}")
+
     model = model.cpu()
-    return model
+    return model, epoch_losses
 
 @torch.no_grad()
 def test(model, dl):
@@ -212,79 +224,101 @@ def main():
     # name = "cifar"
     # train_dl, test_dl = get_data(name)
     # num_classes = get_classes_num(name)
-
-    # Device setup
+    seed = 2
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    # 100,10,1,0.1,
+    scale_array = [100,10, 1, 0.1, 0.01]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Load pretrained ViT model
-    model = create_model("vit_base_patch16_224_in21k", pretrained=True, drop_path_rate=0.1)
-    # for name, module in model.named_modules():
-    #     print(name, type(module))
 
-    # Change the classification head.
-    model.head = torch.nn.Linear(model.head.in_features, 100)
-    for param in model.head.parameters():
-        param.requires_grad = True
+    for scale in scale_array:
+        # Device setup
 
-    total_params = sum(p.numel() for p in model.parameters())
-    total_params = round(total_params / 1000000, 4)
-    print(f"Total #Parameters: {total_params}M")
-    
-    # Apply VERA to the attention layers
-    vera_config = VeraConfig()
-    linear_out_dim, linear_in_dim = _find_dim(model)
-    # print(linear_in_dim)
-    # print(linear_out_dim)
-    model = apply_vera_to_attention_SVD(model, vera_config, linear_out_dim, linear_in_dim)
+        # Load pretrained ViT model
+        model = create_model("vit_base_patch16_224_in21k", pretrained=True, drop_path_rate=0.1)
+        # for name, module in model.named_modules():
+        #     print(name, type(module))
 
-    # for name, param in model.named_parameters():
-    #     print(f"{name}: {param.data.shape}")
+        # Change the classification head.
+        model.head = torch.nn.Linear(model.head.in_features, 100)
+        for param in model.head.parameters():
+            param.requires_grad = True
 
-    # Freeze all parameters except lambda_b and lambda_d
-    freeze_except_vera(model)
+        total_params = sum(p.numel() for p in model.parameters())
+        total_params = round(total_params / 1000000, 4)
+        print(f"Total #Parameters: {total_params}M")
+        
+        # Apply VERA to the attention layers
+        vera_config = VeraConfig()
+        linear_out_dim, linear_in_dim = _find_dim(model)
+        # print(linear_in_dim)
+        # print(linear_out_dim)
 
-    
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    trainable_params = round(trainable_params / 1000000, 4)
-    
-    print(f"Trainable #Parameters: {trainable_params}M")
-    model.reset_classifier(100)
-    # Dataset and DataLoader for CIFAR-100
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-    ])
-    train_dataset = datasets.CIFAR100(root="./data", train=True, download=True, transform=transform)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=256, shuffle=True)
+        
+        print(f"\n\n--------------------------------\n\n")
+        print(f"scale is: {scale}\n")
+        model = apply_vera_to_attention_SVD(model, vera_config, linear_out_dim, linear_in_dim, scale)
 
-    # Test dataset and dataloader
-    test_dataset = datasets.CIFAR100(root="./data", train=False, download=True, transform=transform)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=256, shuffle=False)
-    
-    # Define loss function and optimizer
-    optimizer = torch.optim.AdamW(
-        [
-            {"params": model.head.parameters(), "lr": 4e-3},  # Higher learning rate for the classification head
-            {"params": (p for n, p in model.named_parameters() if n.startswith("vera_lambda") and p.requires_grad)},
-        ],
-        lr=2e-2,  # Default learning rate for other layers
-        weight_decay=0.01,
-    )
-    # optimizer = torch.optim.AdamW(model.parameters(), lr=2e-2, weight_decay=0.01)
-    # Train the model
-    # scheduler = None
-    # Linear learning rate scheduler with warmup
-    scheduler = torch.optim.lr_scheduler.LinearLR(
-    optimizer,
-    start_factor=1.0,   # Start with the initial learning rate
-    end_factor=0.01,    # Final learning rate as a fraction of the initial learning rate
-    total_iters=10     # Number of epochs for the linear decay
-    )
-    # scheduler = CosineLRScheduler(optimizer, t_initial=100)
-    model = train_model(model,train_loader, test_loader, optimizer, device, scheduler)
-    facc = test(model, test_loader)
-    print(f"Final Accuracy: {facc*100}")
+        # for name, param in model.named_parameters():
+        #     print(f"{name}: {param.data.shape}")
+
+        # Freeze all parameters except lambda_b and lambda_d
+        freeze_except_vera(model)
+        
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        trainable_params = round(trainable_params / 1000000, 4)
+        
+        print(f"Trainable #Parameters: {trainable_params}M")
+        model.reset_classifier(100)
+        # Dataset and DataLoader for CIFAR-100
+        transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        ])
+        train_dataset = datasets.CIFAR100(root="./data", train=True, download=True, transform=transform)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
+
+        # Test dataset and dataloader
+        test_dataset = datasets.CIFAR100(root="./data", train=False, download=True, transform=transform)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)
+        
+        # Define loss function and optimizer
+        optimizer = torch.optim.AdamW(
+            [
+                {"params": model.head.parameters(), "lr": 4e-3},  # Higher learning rate for the classification head
+                {"params": (p for n, p in model.named_parameters() if n.startswith("vera_lambda") and p.requires_grad)},
+            ],
+            lr=2e-2,  # Default learning rate for other layers
+            weight_decay=0.01,
+        )
+        # optimizer = torch.optim.AdamW(model.parameters(), lr=2e-2, weight_decay=0.01)
+        # Train the model
+        # scheduler = None
+        # Linear learning rate scheduler with warmup
+        scheduler = torch.optim.lr_scheduler.LinearLR(
+        optimizer,
+        start_factor=1.0,   # Start with the initial learning rate
+        end_factor=0.01,    # Final learning rate as a fracxtion of the initial learning rate
+        total_iters=1000   # Number of epochs for the linear decay
+        )
+        # scheduler = CosineLRScheduler(optimizer, t_initial=100)
+        model, epoch_losses = train_model(model,train_loader, test_loader, optimizer, device, scheduler)
+        print(epoch_losses)
+        # Plot the loss convergence
+        # plt.plot(range(len(epoch_losses)), epoch_losses, label="Loss")
+        # plt.xlabel("Epoch")
+        # plt.ylabel("Loss")
+        # plt.title("Loss Convergence")
+        # plt.legend()
+        # plt.show()
+        # plt.savefig("/home/s33zganj/VERA1/convergence_plot.png")
+
+        facc = test(model, test_loader)
+        print(f"Final Accuracy: {facc*100}")
 
 if __name__ == "__main__":
     main()
