@@ -21,6 +21,11 @@ import random
 import matplotlib.pyplot as plt
 import ptwt
 import pywt
+import debugpy
+from res_dataloader import RESISC45Dataset
+# debugpy.listen(("127.0.0.1", 5678))  # Replace with remote machine IP and port
+# print("Waiting for debugger to attach...")
+# debugpy.wait_for_client()
 # Configuration for VERA
 class VeraConfig:
     r = 256
@@ -169,10 +174,10 @@ def apply_vera_to_attention_SVD(model, vera_config, linear_out_dim, linear_in_di
 # Function to apply VERA modifications to the attention layers
 def apply_vera_to_attention_Wavelet(model, vera_config, linear_out_dim, linear_in_dim, scale):
 
-    matrix_A = ptwt.matmul_transform.construct_boundary_a("haar", length=768, device="cpu").to_dense()
-    matrix_B = ptwt.matmul_transform.construct_boundary_s("haar", length=768, device="cpu").to_dense()
+    matrix_A = ptwt.matmul_transform.construct_boundary_a("sym4", length=768, device="cpu").to_dense()
+    matrix_B = ptwt.matmul_transform.construct_boundary_s("sym4", length=768, device="cpu").to_dense()
     matrix_A[768//2:, :] = 0.0
-
+    matrix_B[768//2:, :] = 0.0
     qkv_layers = []
     proj_layers = []
 
@@ -216,6 +221,8 @@ def apply_vera_to_attention_Fourier(model, vera_config, linear_out_dim, linear_i
     matrix_B = matrix_A.conj().T / 768
     matrix_A_copy = matrix_A.clone()
     matrix_A_copy[768 // 2:, :] = 0.0
+    matrix_B_copy = matrix_B.clone()
+    matrix_B_copy[768//2:, :] = 0.0
 
     qkv_layers = []
     proj_layers = []
@@ -234,7 +241,7 @@ def apply_vera_to_attention_Fourier(model, vera_config, linear_out_dim, linear_i
         new_mod = VeraFourierLinear(
             base_layer=model.get_submodule(".".join(parent))[int(k)].attn.qkv,
             vera_A=matrix_A_copy,
-            vera_B=matrix_B,
+            vera_B=matrix_B_copy,
             r=vera_config.r,
             vera_dropout=vera_config.vera_dropout,
             scale = scale
@@ -307,7 +314,7 @@ def main():
     # name = "cifar"
     # train_dl, test_dl = get_data(name)
     # num_classes = get_classes_num(name)
-    dataset = 'Cifar100'
+    dataset = 'RESISC45'
     num_classes = 0
     if dataset == 'Cifar100':
         num_classes = 100
@@ -322,122 +329,137 @@ def main():
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     # 100,10,1,0.1,0.01
-    scale_array = [0.001]
+    scale_array = [100,10,1,0.1,0.01]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
+    
+    svd_acc, wavelet_acc, fourier_acc = [], [], []
     for scale in scale_array:
-        # Device setup
 
-        # Load pretrained ViT model
-        model = create_model("vit_base_patch16_224_in21k", pretrained=True, drop_path_rate=0.1)
-
-        # for name, module in model.named_modules():
-        #     print(name, type(module))
-
-        # Change the classification head.
-        model.head = torch.nn.Linear(model.head.in_features, num_classes)
-        for param in model.head.parameters():
+        print(f"Training with scale: {scale}")
+        # SVD Initialization
+        model_svd = create_model("vit_base_patch16_224_in21k", pretrained=True, drop_path_rate=0.1)
+        model_svd.head = torch.nn.Linear(model_svd.head.in_features, num_classes)
+        for param in model_svd.head.parameters():
             param.requires_grad = True
-
-        total_params = sum(p.numel() for p in model.parameters())
+        
+        total_params = sum(p.numel() for p in model_svd.parameters())
         total_params = round(total_params / 1000000, 4)
         print(f"Total #Parameters: {total_params}M")
-        
-        # Apply VERA to the attention layers
         vera_config = VeraConfig()
-        linear_out_dim, linear_in_dim = _find_dim(model)
-        # print(linear_in_dim)
-        # print(linear_out_dim)
+        linear_out_dim, linear_in_dim = _find_dim(model_svd)
+        model_svd = apply_vera_to_attention_SVD(model_svd, vera_config, linear_out_dim, linear_in_dim, scale)
+        freeze_except_vera(model_svd)
 
-        
-        print(f"\n\n--------------------------------\n\n")
-        print(f"scale is: {scale}\n")
-        model = apply_vera_to_attention_Wavelet(model, vera_config, linear_out_dim, linear_in_dim, scale)
-
-        # for name, param in model.named_parameters():
-        #     print(f"{name}: {param.data.shape}")
-
-        # Freeze all parameters except lambda_b and lambda_d
-        freeze_except_vera(model)
-    
-        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        trainable_params = sum(p.numel() for p in model_svd.parameters() if p.requires_grad)
         trainable_params = round(trainable_params / 1000000, 4)
-        
         print(f"Trainable #Parameters: {trainable_params}M")
-        model.reset_classifier(num_classes)
-        if dataset == 'Cifar100':
-            # Dataset and DataLoader for CIFAR-100
-            transform = transforms.Compose([
-                transforms.Resize((224, 224)),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-            ])
-            train_dataset = datasets.CIFAR100(root="./data", train=True, download=True, transform=transform)
-            train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
 
-            # Test dataset and dataloader
-            test_dataset = datasets.CIFAR100(root="./data", train=False, download=True, transform=transform)
-            test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)
-        
-        elif dataset == 'Food101':
-            # Dataset and DataLoader for Food101
-            transform = transforms.Compose([
-                transforms.Resize((224, 224)),  # Resizing images to 224x224 for ViT input
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-            ])
-
-            # Training dataset and DataLoader
-            train_dataset = datasets.Food101(root="./data", split="train", download=True, transform=transform)
-            train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
-
-            # Test dataset and DataLoader
-            test_dataset = datasets.Food101(root="./data", split="test", download=True, transform=transform)
-            test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)
-
-        elif dataset == 'RESISC45':
-            num_classes = 45
-
-            # Dataset and DataLoader for RESISC45
-            transform = transforms.Compose([
-                transforms.Resize((224, 224)),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-            ])
-
-            # Download RESISC45 from torchvision.datasets if supported, or manually provide paths to the dataset
-            train_dataset = datasets.Food101(root="./data", split="train", download=True, transform=transform)
-            train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
-
-            test_dataset = datasets.Food101(root="./data", split="test", download=True, transform=transform)
-            test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)
+        svd_acc.append(train_and_evaluate(model_svd, dataset, device, num_classes))
 
         
-        # Define loss function and optimizer
-        optimizer = torch.optim.AdamW(
-            [
-                {"params": model.head.parameters(), "lr": 4e-3},  # Higher learning rate for the classification head
-                {"params": (p for n, p in model.named_parameters() if n.startswith("vera_lambda") and p.requires_grad)},
-            ],
-            lr=2e-2,  # Default learning rate for other layers
-            weight_decay=0.01,
-        )
-      
-        # Train the model
-        # Linear learning rate scheduler with warmup
-        scheduler = torch.optim.lr_scheduler.LinearLR(
-        optimizer,
-        start_factor=1.0,   # Start with the initial learning rate
-        end_factor=0.01,    # Final learning rate as a fracxtion of the initial learning rate
-        total_iters=1000   # Number of epochs for the linear decay
-        )
-      
-        # scheduler = CosineLRScheduler(optimizer, t_initial=100)
-        model, epoch_losses = train_model(model,train_loader, test_loader, optimizer, device, scheduler)
-
+        # Wavelet Initialization
+        model_wavelet = create_model("vit_base_patch16_224_in21k", pretrained=True, drop_path_rate=0.1)
+        model_wavelet.head = torch.nn.Linear(model_wavelet.head.in_features, num_classes)
+        for param in model_wavelet.head.parameters():
+            param.requires_grad = True
+        vera_config = VeraConfig()
+        linear_out_dim, linear_in_dim = _find_dim(model_wavelet)
+        model_wavelet = apply_vera_to_attention_Wavelet(model_wavelet, vera_config, linear_out_dim, linear_in_dim, scale)
+        freeze_except_vera(model_wavelet)
+        wavelet_acc.append(train_and_evaluate(model_wavelet, dataset, device, num_classes))
         
-        # # Plot the loss convergence
+        # Fourier Initialization
+        model_fourier = create_model("vit_base_patch16_224_in21k", pretrained=True, drop_path_rate=0.1)
+        model_fourier.head = torch.nn.Linear(model_fourier.head.in_features, num_classes)
+        for param in model_fourier.head.parameters():
+            param.requires_grad = True
+        vera_config = VeraConfig()
+        linear_out_dim, linear_in_dim = _find_dim(model_fourier)
+        model_fourier = apply_vera_to_attention_Fourier(model_fourier, vera_config, linear_out_dim, linear_in_dim, scale)
+        freeze_except_vera(model_fourier)
+        fourier_acc.append(train_and_evaluate(model_fourier, dataset, device, num_classes))
+    print(f"svd: {svd_acc}")
+    print(f"wavelet: {wavelet_acc}")
+    print(f"fourier: {fourier_acc}")
+    # Plotting
+    plt.figure(figsize=(10, 6))
+    plt.plot(scale_array, svd_acc, marker='o', label='SVD')
+    plt.plot(scale_array, wavelet_acc, marker='o', label='Wavelet')
+    plt.plot(scale_array, fourier_acc, marker='o', label='Fourier')
+    plt.xscale('log')
+    plt.xlabel("Scale (log scale)")
+    plt.ylabel("Final Accuracy")
+    plt.title("Comparison of Final Accuracies Across Different Initializations and Scales")
+    plt.legend()
+    plt.grid(True)
+    plt.savefig("svd_final_accuracies.png")
+    plt.show()
+
+def train_and_evaluate(model, dataset, device, num_classes):
+    model.reset_classifier(num_classes)
+    # Dataset and Dataloader preparation
+    if dataset == 'Cifar100':
+        # Dataset and DataLoader for CIFAR-100
+        transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        ])
+        train_dataset = datasets.CIFAR100(root="./data", train=True, download=True, transform=transform)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
+
+        # Test dataset and dataloader
+        test_dataset = datasets.CIFAR100(root="./data", train=False, download=True, transform=transform)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)
+    
+    elif dataset == 'Food101':
+        # Dataset and DataLoader for Food101
+        transform = transforms.Compose([
+            transforms.Resize((224, 224)),  # Resizing images to 224x224 for ViT input
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        ])
+
+        # Training dataset and DataLoader
+        train_dataset = datasets.Food101(root="./data", split="train", download=True, transform=transform)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
+
+        # Test dataset and DataLoader
+        test_dataset = datasets.Food101(root="./data", split="test", download=True, transform=transform)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)
+
+    elif dataset == 'RESISC45':
+        num_classes = 45
+        
+        transform = transforms.Compose([
+        transforms.Resize((224, 224)),  
+        transforms.ToTensor(),          
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  
+        ])
+
+        dataset = RESISC45Dataset(root_dir='/home/s33zganj/VERA1/data/NWPU-RESISC45', transform=transform)
+
+        # Split into training and validation sets (optional)
+        
+        train_size = int(0.8 * len(dataset))
+        test_size = len(dataset) - train_size
+        train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
+
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)
+            
+    # Optimizer and Scheduler
+    optimizer = torch.optim.AdamW(
+        [{"params": model.head.parameters(), "lr": 4e-3}, 
+         {"params": (p for n, p in model.named_parameters() if n.startswith("vera_lambda") and p.requires_grad)}],
+        lr=2e-2, weight_decay=0.01,
+    )
+    scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=0.01, total_iters=1000)
+    
+    # Training
+    model, epoch_losses = train_model(model, train_loader, test_loader, optimizer, device, scheduler)
+    
+    # # Plot the loss convergence
         # plt.plot(range(len(epoch_losses1)), epoch_losses1, label="Kaiming Uniform")
         # plt.plot(range(len(epoch_losses1)), epoch_losses2, label="SVD")
         # plt.xlabel("Epoch")
@@ -446,9 +468,13 @@ def main():
         # plt.legend()
         # plt.show()
         # plt.savefig("/home/s33zganj/VERA1/convergence_plot.png")
-
-        facc = test(model, test_loader)
-        print(f"Final Accuracy: {facc*100}")
+    # Evaluation
+    facc = test(model, test_loader)
+    print(f"Final Accuracy: {facc*100}")
+    return facc
 
 if __name__ == "__main__":
     main()
+
+
+
