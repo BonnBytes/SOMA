@@ -27,6 +27,7 @@ from res_dataloader import RESISC45Dataset
 # print("Waiting for debugger to attach...")
 # debugpy.wait_for_client()
 # Configuration for VERA
+
 class VeraConfig:
     r = 256
     vera_dropout = 0.1
@@ -85,7 +86,7 @@ def _kaiming_init(shape: tuple[int, ...], generator: torch.Generator) -> torch.T
 
 
 # Function to apply VERA modifications to the attention layers
-def apply_vera_to_attention(model, vera_config, linear_out_dim, linear_in_dim, scale):
+def apply_vera_to_attention(model, vera_config, linear_out_dim, linear_in_dim, scale,rank):
     # print("yeeessssssssssssssssssssssss222222")
     # Check if linear_in_dim is a power of two
     new_in_dim = 0
@@ -95,8 +96,8 @@ def apply_vera_to_attention(model, vera_config, linear_out_dim, linear_in_dim, s
         new_in_dim = linear_in_dim
 
     generator = torch.Generator(device="cpu").manual_seed(0)
-    vera_A = _kaiming_init((vera_config.r, new_in_dim), generator)
-    vera_B = _kaiming_init((linear_out_dim, vera_config.r), generator)
+    vera_A = _kaiming_init((rank, new_in_dim), generator)
+    vera_B = _kaiming_init((linear_out_dim, rank), generator)
     # 
 
  
@@ -128,7 +129,7 @@ def apply_vera_to_attention(model, vera_config, linear_out_dim, linear_in_dim, s
             base_layer=model.get_submodule(".".join(parent))[int(k)].attn.qkv,
             vera_A=vera_A,
             vera_B=vera_B,
-            r=vera_config.r,
+            r=rank,
             vera_dropout=vera_config.vera_dropout,
             scale = scale
             )
@@ -140,7 +141,7 @@ def apply_vera_to_attention(model, vera_config, linear_out_dim, linear_in_dim, s
     return model
 
 # Function to apply VERA modifications to the attention layers
-def apply_vera_to_attention_SVD(model, vera_config, linear_out_dim, linear_in_dim, scale):
+def apply_vera_to_attention_SVD(model, vera_config, linear_out_dim, linear_in_dim, scale, rank):
 
     qkv_layers = []
     proj_layers = []
@@ -159,7 +160,7 @@ def apply_vera_to_attention_SVD(model, vera_config, linear_out_dim, linear_in_di
         new_mod = VeraSVDLinear(
             base_layer=model.get_submodule(".".join(parent))[int(k)].attn.qkv,
             weight = mod.weight.data,
-            r=vera_config.r,
+            r=rank,
             vera_dropout=vera_config.vera_dropout,
             scale = scale
             )
@@ -172,12 +173,12 @@ def apply_vera_to_attention_SVD(model, vera_config, linear_out_dim, linear_in_di
 
 
 # Function to apply VERA modifications to the attention layers
-def apply_vera_to_attention_Wavelet(model, vera_config, linear_out_dim, linear_in_dim, scale):
+def apply_vera_to_attention_Wavelet(model, vera_config, linear_out_dim, linear_in_dim, scale, rank):
 
     matrix_A = ptwt.matmul_transform.construct_boundary_a("sym4", length=768, device="cpu").to_dense()
     matrix_B = ptwt.matmul_transform.construct_boundary_s("sym4", length=768, device="cpu").to_dense()
     matrix_A[768//2:, :] = 0.0
-    matrix_B[768//2:, :] = 0.0
+    
     qkv_layers = []
     proj_layers = []
 
@@ -196,7 +197,7 @@ def apply_vera_to_attention_Wavelet(model, vera_config, linear_out_dim, linear_i
             base_layer=model.get_submodule(".".join(parent))[int(k)].attn.qkv,
             vera_A=matrix_A,
             vera_B=matrix_B,
-            r=vera_config.r,
+            r=rank,
             vera_dropout=vera_config.vera_dropout,
             scale = scale
             )
@@ -215,14 +216,19 @@ def fourier_matrix(n):
     return torch.complex(real_part, imag_part)
 
 # Function to apply VERA modifications to the attention layers
-def apply_vera_to_attention_Fourier(model, vera_config, linear_out_dim, linear_in_dim, scale):
+def apply_vera_to_attention_Fourier(model, vera_config, linear_out_dim, linear_in_dim, scale, rank):
 
     matrix_A = fourier_matrix(768)
     matrix_B = matrix_A.conj().T / 768
     matrix_A_copy = matrix_A.clone()
-    matrix_A_copy[768 // 2:, :] = 0.0
-    matrix_B_copy = matrix_B.clone()
-    matrix_B_copy[768//2:, :] = 0.0
+    # matrix_A_copy[768 // 2:, :] = 0.0
+    matrix_A_copy[768 // 2:, :] = torch.complex(torch.zeros_like(matrix_A_copy[768 // 2:, :].real), 
+                                            torch.zeros_like(matrix_A_copy[768 // 2:, :].imag))
+    
+    # print(f"Is Complex matrix A: {torch.is_complex(matrix_A)}")
+    # print(f"Is Complex matrix A copy: {torch.is_complex(matrix_A_copy)}")
+
+    
 
     qkv_layers = []
     proj_layers = []
@@ -241,8 +247,8 @@ def apply_vera_to_attention_Fourier(model, vera_config, linear_out_dim, linear_i
         new_mod = VeraFourierLinear(
             base_layer=model.get_submodule(".".join(parent))[int(k)].attn.qkv,
             vera_A=matrix_A_copy,
-            vera_B=matrix_B_copy,
-            r=vera_config.r,
+            vera_B=matrix_B,
+            r=rank,
             vera_dropout=vera_config.vera_dropout,
             scale = scale
             )
@@ -314,88 +320,145 @@ def main():
     # name = "cifar"
     # train_dl, test_dl = get_data(name)
     # num_classes = get_classes_num(name)
-    dataset = 'RESISC45'
-    num_classes = 0
-    if dataset == 'Cifar100':
-        num_classes = 100
-    elif dataset == 'Food101':
-        num_classes = 101
-    elif dataset == 'RESISC45':
-        num_classes = 45
+    
+    dataset_classes = {"Cifar100": 100, "Food101": 101, "RESISC45": 45}
+    dataset = "Cifar100"
+    num_classes = dataset_classes.get(dataset, 0)
+    if not num_classes:
+        raise ValueError(f"Unsupported dataset: {dataset}")
 
-    seed = 1
+    seed =1
     np.random.seed(seed)
     random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+    
     # 100,10,1,0.1,0.01
-    scale_array = [100,10,1,0.1,0.01]
+    scale_array = [0.01]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    svd_acc, wavelet_acc, fourier_acc = [], [], []
-    for scale in scale_array:
+    rank = [2,4,8,16,32,64,128,256,512]
 
-        print(f"Training with scale: {scale}")
-        # SVD Initialization
-        model_svd = create_model("vit_base_patch16_224_in21k", pretrained=True, drop_path_rate=0.1)
-        model_svd.head = torch.nn.Linear(model_svd.head.in_features, num_classes)
-        for param in model_svd.head.parameters():
-            param.requires_grad = True
+
+    for r in rank:
+        svd_acc, wavelet_acc, fourier_acc, kaiming_acc = [], [], [], []
+        for scale in scale_array:
+            print(f"Training with scale: {scale}")
+            # kaiming Initialization
+            model_kaiming = create_model("vit_base_patch16_224_in21k", pretrained=True, drop_path_rate=0.1)
+            model_kaiming.head = torch.nn.Linear(model_kaiming.head.in_features, num_classes)
+            for param in model_kaiming.head.parameters():
+                param.requires_grad = True
+            
+            total_params = sum(p.numel() for p in model_kaiming.parameters())
+            total_params = round(total_params / 1000000, 4)
+            print(f"Total #Parameters: {total_params}M")
+            vera_config = VeraConfig()
+            linear_out_dim, linear_in_dim = _find_dim(model_kaiming)
+            model_kaiming = apply_vera_to_attention(model_kaiming, vera_config, linear_out_dim, linear_in_dim, scale, r)
+            freeze_except_vera(model_kaiming)
+
+            trainable_params = sum(p.numel() for p in model_kaiming.parameters() if p.requires_grad)
+            trainable_params = round(trainable_params / 1000000, 4)
+            print(f"Trainable #Parameters: {trainable_params}M")
+
+            kaiming_acc.append(train_and_evaluate(model_kaiming, dataset, device, num_classes,seed))
+
+            # SVD Initialization
+            print("SVD")
+            model_svd = create_model("vit_base_patch16_224_in21k", pretrained=True, drop_path_rate=0.1)
+            model_svd.head = torch.nn.Linear(model_svd.head.in_features, num_classes)
+            for param in model_svd.head.parameters():
+                param.requires_grad = True
+            
+            total_params = sum(p.numel() for p in model_svd.parameters())
+            total_params = round(total_params / 1000000, 4)
+            print(f"Total #Parameters: {total_params}M")
+            vera_config = VeraConfig()
+            linear_out_dim, linear_in_dim = _find_dim(model_svd)
+            model_svd = apply_vera_to_attention_SVD(model_svd, vera_config, linear_out_dim, linear_in_dim, scale, r)
+            freeze_except_vera(model_svd)
+
+            trainable_params = sum(p.numel() for p in model_svd.parameters() if p.requires_grad)
+            trainable_params = round(trainable_params / 1000000, 4)
+            print(f"Trainable #Parameters: {trainable_params}M")
+
+            svd_acc.append(train_and_evaluate(model_svd, dataset, device, num_classes,seed))
+            
+            # Wavelet Initialization
+            print("Wavelet")
+            model_wavelet = create_model("vit_base_patch16_224_in21k", pretrained=True, drop_path_rate=0.1)
+            model_wavelet.head = torch.nn.Linear(model_wavelet.head.in_features, num_classes)
+            for param in model_wavelet.head.parameters():
+                param.requires_grad = True
+            vera_config = VeraConfig()
+            linear_out_dim, linear_in_dim = _find_dim(model_wavelet)
+            model_wavelet = apply_vera_to_attention_Wavelet(model_wavelet, vera_config, linear_out_dim, linear_in_dim, scale, r)
+            freeze_except_vera(model_wavelet)
+
+            trainable_params = sum(p.numel() for p in model_wavelet.parameters() if p.requires_grad)
+            trainable_params = round(trainable_params / 1000000, 4)
+            print(f"Trainable #Parameters: {trainable_params}M")
+
+            wavelet_acc.append(train_and_evaluate(model_wavelet, dataset, device, num_classes,seed))
+            
+            # Fourier Initialization
+            print("Fourier")
+            model_fourier = create_model("vit_base_patch16_224_in21k", pretrained=True, drop_path_rate=0.1)
+            model_fourier.head = torch.nn.Linear(model_fourier.head.in_features, num_classes)
+            for param in model_fourier.head.parameters():
+                param.requires_grad = True
+            vera_config = VeraConfig()
+            linear_out_dim, linear_in_dim = _find_dim(model_fourier)
+            model_fourier = apply_vera_to_attention_Fourier(model_fourier, vera_config, linear_out_dim, linear_in_dim, scale, r)
+            freeze_except_vera(model_fourier)
+
+            trainable_params = sum(p.numel() for p in model_fourier.parameters() if p.requires_grad)
+            trainable_params = round(trainable_params / 1000000, 4)
+            print(f"Trainable #Parameters: {trainable_params}M")
+
+            fourier_acc.append(train_and_evaluate(model_fourier, dataset, device, num_classes,seed))
+        print(f"r:{r}")
+        print(f"kaiming: {kaiming_acc}")
+        print(f"svd: {svd_acc}")
+        print(f"wavelet: {wavelet_acc}")
+        print(f"fourier: {fourier_acc}")
         
-        total_params = sum(p.numel() for p in model_svd.parameters())
-        total_params = round(total_params / 1000000, 4)
-        print(f"Total #Parameters: {total_params}M")
-        vera_config = VeraConfig()
-        linear_out_dim, linear_in_dim = _find_dim(model_svd)
-        model_svd = apply_vera_to_attention_SVD(model_svd, vera_config, linear_out_dim, linear_in_dim, scale)
-        freeze_except_vera(model_svd)
 
-        trainable_params = sum(p.numel() for p in model_svd.parameters() if p.requires_grad)
-        trainable_params = round(trainable_params / 1000000, 4)
-        print(f"Trainable #Parameters: {trainable_params}M")
+    # # Plotting
+    # plt.figure(figsize=(10, 6))
+    # for acc, label in zip([svd_acc, wavelet_acc, fourier_acc], ["SVD", "Wavelet", "Fourier"]):
+    #     plt.plot(scale_array, acc, label=label)
+    # # plt.plot(scale_array, svd_acc, label='SVD')
+    # # plt.plot(scale_array, wavelet_acc, label='Wavelet')
+    # # plt.plot(scale_array, fourier_acc, label='Fourier')
+    # plt.xlabel("Scale")
+    # plt.ylabel("Final Accuracy")
+    # plt.title("Comparison of Final Accuracies Across Different Initializations and Scales")
+    # plt.legend()
+    # plt.savefig("svd_final_accuracies.png")
+    # plt.show()
 
-        svd_acc.append(train_and_evaluate(model_svd, dataset, device, num_classes))
+    # k = [3.0764578605246973, 1.0027095282169254, 0.7898217181036787, 0.6785733015598793, 0.6189487880403105, 0.5638910320348587, 0.5270251410247953, 0.4727066457107076, 0.4436694593115947, 0.4144661062521296]
+    # svd = [3.0838970436769375, 0.9858864544869383, 0.7745950173424638, 0.6680979913218504, 0.6188348691846194, 0.5466031939823084, 0.5396989724817514, 0.4772227857014923, 0.46063630696793406, 0.39959743593242497]
+    # wav = [3.0568344847625477, 1.0276026250246693, 0.764103465277673, 0.6629967455742667, 0.6276995491698238, 0.5612173108882723, 0.527207456879168, 0.4947872884261012, 0.4547367881659878, 0.4365393567931664]
+    # f= [3.094612689731676, 1.023395275625655, 0.7851022787230171, 0.6758109690196327, 0.624611132837477, 0.574745422292105, 0.5232566969265686, 0.46964792623166757, 0.4655607103308368, 0.4205849422672627]
 
-        
-        # Wavelet Initialization
-        model_wavelet = create_model("vit_base_patch16_224_in21k", pretrained=True, drop_path_rate=0.1)
-        model_wavelet.head = torch.nn.Linear(model_wavelet.head.in_features, num_classes)
-        for param in model_wavelet.head.parameters():
-            param.requires_grad = True
-        vera_config = VeraConfig()
-        linear_out_dim, linear_in_dim = _find_dim(model_wavelet)
-        model_wavelet = apply_vera_to_attention_Wavelet(model_wavelet, vera_config, linear_out_dim, linear_in_dim, scale)
-        freeze_except_vera(model_wavelet)
-        wavelet_acc.append(train_and_evaluate(model_wavelet, dataset, device, num_classes))
-        
-        # Fourier Initialization
-        model_fourier = create_model("vit_base_patch16_224_in21k", pretrained=True, drop_path_rate=0.1)
-        model_fourier.head = torch.nn.Linear(model_fourier.head.in_features, num_classes)
-        for param in model_fourier.head.parameters():
-            param.requires_grad = True
-        vera_config = VeraConfig()
-        linear_out_dim, linear_in_dim = _find_dim(model_fourier)
-        model_fourier = apply_vera_to_attention_Fourier(model_fourier, vera_config, linear_out_dim, linear_in_dim, scale)
-        freeze_except_vera(model_fourier)
-        fourier_acc.append(train_and_evaluate(model_fourier, dataset, device, num_classes))
-    print(f"svd: {svd_acc}")
-    print(f"wavelet: {wavelet_acc}")
-    print(f"fourier: {fourier_acc}")
-    # Plotting
-    plt.figure(figsize=(10, 6))
-    plt.plot(scale_array, svd_acc, marker='o', label='SVD')
-    plt.plot(scale_array, wavelet_acc, marker='o', label='Wavelet')
-    plt.plot(scale_array, fourier_acc, marker='o', label='Fourier')
-    plt.xscale('log')
-    plt.xlabel("Scale (log scale)")
-    plt.ylabel("Final Accuracy")
-    plt.title("Comparison of Final Accuracies Across Different Initializations and Scales")
-    plt.legend()
-    plt.grid(True)
-    plt.savefig("svd_final_accuracies.png")
-    plt.show()
+    #     # Plotting
+    # plt.figure(figsize=(10, 6))
+    # for acc, label in zip([k, svd, wav, f], ["Kaiming","SVD", "Wavelet", "Fourier"]):
+    #     plt.plot(range(len(k)), acc, label=label)
+    # # plt.plot(scale_array, svd_acc, label='SVD')
+    # # plt.plot(scale_array, wavelet_acc, label='Wavelet')
+    # # plt.plot(scale_array, fourier_acc, label='Fourier')
+    # plt.xlabel("Epoch")
+    # plt.ylabel("Loss")
+    # plt.title("Loss Convergence Across Different Initialization Strategies for Shared Matrices")
+    # plt.legend()
+    # plt.savefig("Loss_convergence2.png")
+    # plt.show()
 
-def train_and_evaluate(model, dataset, device, num_classes):
+def train_and_evaluate(model, dataset, device, num_classes,seed):
     model.reset_classifier(num_classes)
     # Dataset and Dataloader preparation
     if dataset == 'Cifar100':
@@ -406,11 +469,11 @@ def train_and_evaluate(model, dataset, device, num_classes):
             transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
         ])
         train_dataset = datasets.CIFAR100(root="./data", train=True, download=True, transform=transform)
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True,worker_init_fn=lambda _: np.random.seed(seed))
 
         # Test dataset and dataloader
         test_dataset = datasets.CIFAR100(root="./data", train=False, download=True, transform=transform)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False, worker_init_fn=lambda _: np.random.seed(seed))
     
     elif dataset == 'Food101':
         # Dataset and DataLoader for Food101
@@ -422,11 +485,11 @@ def train_and_evaluate(model, dataset, device, num_classes):
 
         # Training dataset and DataLoader
         train_dataset = datasets.Food101(root="./data", split="train", download=True, transform=transform)
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True, worker_init_fn=lambda _: np.random.seed(seed))
 
         # Test dataset and DataLoader
         test_dataset = datasets.Food101(root="./data", split="test", download=True, transform=transform)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False, worker_init_fn=lambda _: np.random.seed(seed))
 
     elif dataset == 'RESISC45':
         num_classes = 45
@@ -445,8 +508,8 @@ def train_and_evaluate(model, dataset, device, num_classes):
         test_size = len(dataset) - train_size
         train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
 
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True, worker_init_fn=lambda _: np.random.seed(seed))
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False, worker_init_fn=lambda _: np.random.seed(seed))
             
     # Optimizer and Scheduler
     optimizer = torch.optim.AdamW(

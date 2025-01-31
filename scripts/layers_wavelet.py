@@ -29,7 +29,7 @@ class VeraLayer(nn.Module):
         self.vera_dropout = nn.ModuleDict({})
         
         self.vera_lambda_b = nn.ParameterDict({})
-        self.vera_lambda_d = nn.ParameterDict({})
+        # self.vera_lambda_d = nn.ParameterDict({})
 
         # Stores a reference to the vera_A/B BufferDict.
         self.vera_A: Optional[BufferDict] = None
@@ -84,8 +84,22 @@ class VeraLayer(nn.Module):
 
         # print(f"in features in layers.py:{self.in_features}, out:{self.out_features}")
         self.vera_lambda_b = nn.Parameter(torch.ones(self.out_features), requires_grad=True)
-        self.vera_lambda_d = nn.Parameter(torch.randn(self.out_features), requires_grad=True)
+        # self.vera_lambda_d = nn.Parameter(torch.randn(self.out_features))
+        
+        self.vera_lambda_d = nn.Parameter(torch.randn(r), requires_grad=True)
 
+        
+        self.fixed_lambda_d = nn.Parameter(torch.randn(self.out_features - r), requires_grad=False)
+
+        # self.vera_lambda_d = torch.zeros(self.out_features)
+        # self.vera_lambda_d[:r] = self.trainable_lambda_d
+        # self.vera_lambda_d[r:] = self.fixed_lambda_d
+
+        # # Combine trainable and fixed parts of lambda_d
+        
+        # Manually ensure that only the trainable part has requires_grad=True
+        # self.vera_lambda_d[:r].requires_grad = True
+        # self.vera_lambda_d[r:].requires_grad = False
         # Generate fixed random permutation matrix Pi
         self.pi = random_permutation_matrix(self.out_features)
 
@@ -155,9 +169,13 @@ class Linear(nn.Linear, VeraLayer):
         A = self.vera_A.to(device).to(torch.float32)
         B = self.vera_B.to(device).to(torch.float32)
 
-
-        lambda_d = self.vera_lambda_d.to(device).to(torch.float32)
+        vera_lambda_d = self.vera_lambda_d.to(device).to(torch.float32)
+        fixed_lambda_d = self.fixed_lambda_d.to(device).to(torch.float32)
         lambda_b = self.vera_lambda_b.to(device).to(torch.float32)
+
+        lambda_d = torch.cat(
+            [vera_lambda_d, fixed_lambda_d], dim=0
+        )
 
         dropout = self.vera_dropout["vera"]
         re = torch.diag(lambda_b) @ B @ torch.diag(lambda_d) @ A
