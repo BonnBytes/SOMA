@@ -102,9 +102,15 @@ class VeraLayer(nn.Module):
         # self.vera_lambda_d[r:].requires_grad = False
         # Generate fixed random permutation matrix Pi
         self.pi = random_permutation_matrix(self.out_features)
-
+        # print("Random permutation matrix (pi):")
+        # print(self.pi)
+        
         self.vera_B = nn.Parameter(vera_B.T, requires_grad=False)
+
         self.vera_A = nn.Parameter(self.pi @ vera_A.T, requires_grad=False)
+        # print("Sum of pi :", torch.sum(self.pi @ vera_A.T).item())
+        # print("Number of non-zero elements in pi:", torch.count_nonzero(self.pi @ vera_A.T).item())
+        # print(f'with pi{self.vera_A}')
         
 
         if len(self.vera_A) < 1:
@@ -220,35 +226,42 @@ class MergedLinear(nn.Linear):
         # self.update_layer(vera_A, vera_B, r, vera_dropout, init_weights, d_initial)
         self.is_target_conv_1d_layer = is_target_conv_1d_layer
           # Separate linear layers for q and v
-        self.qkv = nn.Linear(self.dim, self.dim * 3)
+        weight_q, weight_k, weight_v = torch.split(weight, self.dim, dim=0)
+
+        # Initialize projection layers
+        q = nn.Linear(self.base_layer.in_features, self.dim)
+        v = nn.Linear(self.base_layer.in_features, self.dim)
+
+        # Assign weights and biases
+        with torch.no_grad():
+            q.weight.copy_(weight_q)
+            v.weight.copy_(weight_v)
+
+
+        # Initialize separate linear layers for q and v
         self.q_proj = Linear(
-                base_layer=nn.Linear(self.base_layer.in_features, self.dim),
-                vera_A=vera_A,
-                vera_B=vera_B,
-                r=r,
-                vera_dropout=vera_dropout
-            )
-        self.k_proj = nn.Linear(self.base_layer.in_features, self.dim)  # Keep original key projection
+            base_layer=q,
+            vera_A=vera_A,
+            vera_B=vera_B,
+            r=r,
+            vera_dropout=vera_dropout
+        )
+
         self.v_proj = Linear(
-                base_layer=nn.Linear(self.base_layer.in_features, self.dim),
-                vera_A=vera_A,
-                vera_B=vera_B,
-                r=r,
-                vera_dropout=vera_dropout
-            )
+            base_layer=v,
+            vera_A=vera_A,
+            vera_B=vera_B,
+            r=r,
+            vera_dropout=vera_dropout
+        )
+
         self.scale = scale
 
-    # x: torch.Tensor: This is the input tensor that will be passed through the model. It typically represents a batch of input data.
     def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
-        # First, it performs a standard forward pass through the base_layer (which is the underlying nn.Linear or similar layer).
         result = super().forward(x)
         Q = self.q_proj(x)
         V = self.v_proj(x)
         K = torch.zeros_like(V)
-        # K = self.k_proj(x)
-        
         out = torch.cat([Q, K, V], dim=-1)
-        # print(f"out{out.shape}")
         result = result + self.scale * out
         return result
-# operation effectively merges the contributions from the adapter into the final output, modifying it based on the learned parameters.

@@ -164,6 +164,7 @@ def apply_vera_to_attention_SVD(model, vera_config, linear_out_dim, linear_in_di
             vera_dropout=vera_config.vera_dropout,
             scale = scale
             )
+
         new_mod.weight = mod.weight
         new_mod.bias = mod.bias if b else None
         model.get_submodule(".".join(parent))[int(k)].attn.qkv = new_mod
@@ -174,11 +175,15 @@ def apply_vera_to_attention_SVD(model, vera_config, linear_out_dim, linear_in_di
 
 # Function to apply VERA modifications to the attention layers
 def apply_vera_to_attention_Wavelet(model, vera_config, linear_out_dim, linear_in_dim, scale, rank):
-
+     #coeffs = pywt.dwt(torch.eye(768), 'sym4')
+     #matrix_A = torch.tensor(coeffs[0])  # Approximation coefficients
+     #matrix_B = torch.pinverse(matrix_A)  # Pseudo-inverse for reconstruction
     matrix_A = ptwt.matmul_transform.construct_boundary_a("sym4", length=768, device="cpu").to_dense()
     matrix_B = ptwt.matmul_transform.construct_boundary_s("sym4", length=768, device="cpu").to_dense()
     matrix_A[768//2:, :] = 0.0
     
+    # print("Sum of matrix_A before permutation:", torch.sum(matrix_A).item())
+    # print("Number of non-zero elements in matrix_A:", torch.count_nonzero(matrix_A).item())
     qkv_layers = []
     proj_layers = []
 
@@ -218,12 +223,13 @@ def fourier_matrix(n):
 # Function to apply VERA modifications to the attention layers
 def apply_vera_to_attention_Fourier(model, vera_config, linear_out_dim, linear_in_dim, scale, rank):
 
-    matrix_A = fourier_matrix(768)
-    matrix_B = matrix_A.conj().T / 768
+    matrix_A = fourier_matrix(768).real
+    matrix_B = fourier_matrix(768).real.T / 768
     matrix_A_copy = matrix_A.clone()
-    # matrix_A_copy[768 // 2:, :] = 0.0
-    matrix_A_copy[768 // 2:, :] = torch.complex(torch.zeros_like(matrix_A_copy[768 // 2:, :].real), 
-                                            torch.zeros_like(matrix_A_copy[768 // 2:, :].imag))
+    matrix_A_copy[768 // 2:, :] = 0.0
+
+    #matrix_A_copy[768 // 2:, :] = torch.complex(torch.zeros_like(matrix_A_copy[768 // 2:, :].real),
+                                   #          torch.zeros_like(matrix_A_copy[768 // 2:, :].imag))
     
     # print(f"Is Complex matrix A: {torch.is_complex(matrix_A)}")
     # print(f"Is Complex matrix A copy: {torch.is_complex(matrix_A_copy)}")
@@ -314,6 +320,173 @@ def test(model, dl):
     ac = sum(acc) / sum(ex)
     return round(ac.cpu().item(), 4)
 
+
+# def get_all_eigenvalues(model_state_dict, is_pretrained):
+
+#     eigenvalues = []
+#     layers = []
+#     for name,module in model.named_modules():
+#         print(name)
+#         if "qkv" in name :
+#             layers.append(name.split("."))
+    
+#     for l in layers:
+        
+#         nm = '.'.join(l)
+#         mod = model.get_submodule(nm)
+        
+#         #     dim = mod.out_features
+#         # else:
+#         if is_pretrained == False:
+#             # dim = mod.out_features 
+#             weight = mod.weight.data.cpu().detach().numpy()
+
+#             eigvals = np.linalg.eigvalsh(weight)
+#             eigenvalues.append(eigvals)
+#         else:
+#             dim = mod.out_features // 3
+
+#             weight_q, weight_k, weight_v = torch.split(mod.weight.data, dim, dim=0)
+            
+#             # # Get base weight matrix
+#             # layer_weight = mod.weight.data
+
+#             # Move to CPU and convert to numpy for eigenvalue calculation
+#             for weight in [weight_q, weight_k, weight_v]:
+
+#                 weight = weight.cpu().detach().numpy()
+
+#                 eigvals = np.linalg.eigvalsh(weight)
+#                 eigenvalues.append(eigvals)
+
+
+#     return np.concatenate(eigenvalues)
+
+def plot_eigen_hist(finetuned_eig, save_path="/home/s33zganj/VERA1/eigen_hist_wavelet.png"):
+    """Plot comparison histogram of eigenvalues using Sturges' rule for bin selection."""
+    plt.figure(figsize=(10, 6))
+
+    # Calculate number of bins using Sturges' rule
+    # num_bins_pretrained = int(np.ceil(np.log2(len(pretrained_eig)) + 1))
+    bins = int(np.ceil(np.log2(len(finetuned_eig)) + 1))
+    
+    # Use the larger bin count to ensure consistency
+    # bins = max(num_bins_pretrained, num_bins_finetuned)
+
+    # plt.hist(pretrained_eig, bins=bins, alpha=0.2, label='Pretrained', density=True)
+    plt.hist(finetuned_eig, bins=bins, alpha=0.5, label='Finetuned')
+
+    plt.xlabel('Eigenvalue Magnitude')
+    plt.ylabel('Frequency')
+    plt.title('Eigenvalue Distribution of Finetuned Model')
+    plt.legend()
+    plt.savefig(save_path)
+    plt.close()
+
+        
+def get_all_eigenvalues(scale, checkpoint_path, is_pretrained = True):
+
+    checkpoint = torch.load(checkpoint_path)
+    model_state_dict = checkpoint['model_state_dict']
+    # Move tensors to the same device
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    
+    
+    # Print keys and shape of values
+    for key, value in model_state_dict.items(): 
+        print(f"Key: {key}, Shape: {value.shape}")
+    for block_idx in range(12):
+        print(model_state_dict[f'blocks.{block_idx}.attn.qkv.q_proj.vera_lambda_b'])
+
+    eigenvalues = []
+    qkv_weight = None
+
+    for block_idx in range(12):
+        attn_key = f'blocks.{block_idx}.attn.qkv'
+
+        if is_pretrained == True:
+            qkv_weight = model_state_dict[attn_key+ '.base_layer.weight'].to(device)
+
+        elif is_pretrained == False:
+                     
+            if attn_key + '.weight' not in model_state_dict:
+                print(f'layer {attn_key}.weight doesnt exists')
+                continue
+            
+            # Get qkv weights
+            # qkv_weight = model_state_dict[attn_key + '.weight']
+            
+            q_weight = None
+            k_weight = None
+            v_weight = None
+            
+            for name in ["q_proj", "v_proj"]:
+                base_weight_key = attn_key + f'.{name}.base_layer.weight'
+                
+                if base_weight_key not in model_state_dict:
+                    print(f'layer {base_weight_key} doesnt exists')
+                    continue
+                base_weight = model_state_dict[base_weight_key].to(device)
+
+                lambda_b = model_state_dict[attn_key + f'.{name}.vera_lambda_b'].to(device)
+                vera_B = model_state_dict[attn_key + f'.{name}.vera_B'].to(device)
+
+                lambda_d = model_state_dict[attn_key + f'.{name}.vera_lambda_d'].to(device)
+                
+                vera_A = model_state_dict[attn_key + f'.{name}.vera_A'].to(device)
+
+                if 'fixed_lambda_d' in model_state_dict.get(attn_key + f'.{name}.fixed_lambda_d', []):
+                    fixed_lambda_d = model_state_dict[attn_key + f'.{name}.fixed_lambda_d'].to(device)
+                    lambda_d = torch.cat([lambda_d, fixed_lambda_d], dim=0)
+
+
+                
+                # Compute adaptation: Λ_b * B * Λ_d * A
+                scaled_B = vera_B * lambda_b.unsqueeze(1)  # Row scaling
+                scaled_B = scaled_B * lambda_d.unsqueeze(0)  # Column scaling
+                adaptation = scaled_B @ vera_A  # [768, 768]
+                
+                # Merge with base weights
+                # model_state_dict[base_weight_key] = base_weight + adaptation
+                if name == "q_proj":
+                    q_weight = adaptation
+                    k_weight = torch.zeros_like(q_weight, device=device)  
+                elif name == "v_proj":
+                    v_weight =adaptation
+
+            
+            qkv_delta_weight = torch.cat((q_weight, k_weight, v_weight), dim=0)
+            print(f'lambda_b:  {lambda_b}')
+            print(f'vera_B:  {vera_B}')
+            print(f'lambda_d:  {lambda_d}')
+            print(f'vera_A:  {vera_A}')
+            print("Sum of vera A :", torch.sum(vera_A).item())
+            print("Number of non-zero elements in vera A:", torch.count_nonzero(vera_A).item())
+            # model_state_dict[attn_key + '.weight'] = model_state_dict[attn_key + '.base_layer.weight'] + scale * qkv_delta_weight
+            qkv_weight = model_state_dict[attn_key + '.base_layer.weight'].to(device) + scale * qkv_delta_weight
+
+
+        
+        output_dim = qkv_weight.shape[0] // 3
+        q_weight, k_weight, v_weight = torch.split(qkv_weight, output_dim,  dim=0)
+        for weight in [q_weight, k_weight, v_weight]:
+            weight = weight.cpu().detach().numpy()
+            eigvals = np.linalg.eigvalsh(weight)
+            eigenvalues.append(eigvals)
+
+    return np.concatenate(eigenvalues)
+
+def save_checkpoint(checkpoint_path, model, optimizer, facc):
+    # Saving model's checkpoint
+    torch.save({
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'epoch': 10,
+        'accuracy': facc
+
+    }, checkpoint_path)
+    print(f"Saved checkpoint to {checkpoint_path}")       
+
 # Main script
 def main():
 #SBATCH --partition=A100medium
@@ -332,20 +505,33 @@ def main():
     random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    
     
     # 100,10,1,0.1,0.01
     scale_array = [0.01]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    rank = [2,4,8,16,32,64,128,256,512]
+    # 2,4,8,16,32,64,128,256,512
+    rank = [256]
 
 
     for r in rank:
         svd_acc, wavelet_acc, fourier_acc, kaiming_acc = [], [], [], []
         for scale in scale_array:
             print(f"Training with scale: {scale}")
+            
+            # pre_trained_eigenvalues = get_all_eigenvalues(scale,"/home/s33zganj/VERA1/checkpoints/kaiming_vera_model.pth", True)
+            
+            # finetuned_eigenvalues = get_all_eigenvalues(scale,"/home/s33zganj/VERA1/checkpoints/kaiming_vera_model.pth", False)
+            # plot_eigen_hist(pre_trained_eigenvalues,finetuned_eigenvalues)
+
+            
             # kaiming Initialization
             model_kaiming = create_model("vit_base_patch16_224_in21k", pretrained=True, drop_path_rate=0.1)
+            
+            # pretrained_eig = get_all_eigenvalues(model_kaiming, True)
+            
             model_kaiming.head = torch.nn.Linear(model_kaiming.head.in_features, num_classes)
             for param in model_kaiming.head.parameters():
                 param.requires_grad = True
@@ -362,7 +548,13 @@ def main():
             trainable_params = round(trainable_params / 1000000, 4)
             print(f"Trainable #Parameters: {trainable_params}M")
 
-            kaiming_acc.append(train_and_evaluate(model_kaiming, dataset, device, num_classes,seed))
+            finetuned_model, optimizer, facc = train_and_evaluate(model_kaiming, dataset, device, num_classes,seed)
+            kaiming_acc.append(facc)
+            if scale == 0.01:
+                save_checkpoint("/home/s33zganj/VERA1/checkpoints/kaiming_vera_model.pth", finetuned_model, optimizer, facc)
+            
+            # # finetuned_eig = get_all_eigenvalues(finetuned_model, False)
+            # # plot_eigen_hist(pretrained_ei,finetuned_eig)
 
             # SVD Initialization
             print("SVD")
@@ -383,8 +575,18 @@ def main():
             trainable_params = round(trainable_params / 1000000, 4)
             print(f"Trainable #Parameters: {trainable_params}M")
 
-            svd_acc.append(train_and_evaluate(model_svd, dataset, device, num_classes,seed))
+            finetuned_model, optimizer,facc = train_and_evaluate(model_svd, dataset, device, num_classes,seed)
+
+            svd_acc.append(facc)
+
+            if scale == 0.01:
+                save_checkpoint(f"/home/s33zganj/VERA1/checkpoints/svd_vera_model.pth", finetuned_model, optimizer, facc)
+            # pre_trained_eigenvalues = get_all_eigenvalues(scale,"/home/s33zganj/VERA1/checkpoints/svd_vera_model.pth", True)
+
+            # finetuned_eigenvalues = get_all_eigenvalues(scale,"/home/s33zganj/VERA1/checkpoints/svd_vera_model.pth", False)
+            # plot_eigen_hist(pre_trained_eigenvalues,finetuned_eigenvalues)
             
+
             # Wavelet Initialization
             print("Wavelet")
             model_wavelet = create_model("vit_base_patch16_224_in21k", pretrained=True, drop_path_rate=0.1)
@@ -400,8 +602,17 @@ def main():
             trainable_params = round(trainable_params / 1000000, 4)
             print(f"Trainable #Parameters: {trainable_params}M")
 
-            wavelet_acc.append(train_and_evaluate(model_wavelet, dataset, device, num_classes,seed))
+            finetuned_model,optimizer, facc = train_and_evaluate(model_wavelet, dataset, device, num_classes,seed)
+            wavelet_acc.append(facc)
             
+            if scale == 0.01:
+                save_checkpoint("/home/s33zganj/VERA1/checkpoints/wavelet_vera_model.pth", finetuned_model, optimizer, facc)
+            # pre_trained_eigenvalues = get_all_eigenvalues(scale,"/home/s33zganj/VERA1/checkpoints/wavelet_vera_model.pth", True)
+
+            # finetuned_eigenvalues = get_all_eigenvalues(scale,"/home/s33zganj/VERA1/checkpoints/wavelet_vera_model.pth", False)
+            # plot_eigen_hist(finetuned_eigenvalues)
+
+           
             # Fourier Initialization
             print("Fourier")
             model_fourier = create_model("vit_base_patch16_224_in21k", pretrained=True, drop_path_rate=0.1)
@@ -417,14 +628,23 @@ def main():
             trainable_params = round(trainable_params / 1000000, 4)
             print(f"Trainable #Parameters: {trainable_params}M")
 
-            fourier_acc.append(train_and_evaluate(model_fourier, dataset, device, num_classes,seed))
-        print(f"r:{r}")
-        print(f"kaiming: {kaiming_acc}")
-        print(f"svd: {svd_acc}")
-        print(f"wavelet: {wavelet_acc}")
-        print(f"fourier: {fourier_acc}")
-        
+            finetuned_model,optimizer, facc = train_and_evaluate(model_fourier, dataset, device, num_classes,seed)
+            fourier_acc.append(facc)
 
+            if scale == 0.01:
+                save_checkpoint("/home/s33zganj/VERA1/checkpoints/fourier_vera_model.pth", finetuned_model, optimizer, facc)
+            # pre_trained_eigenvalues = get_all_eigenvalues(scale,"/home/s33zganj/VERA1/checkpoints/fourier_vera_model.pth", True)
+            # finetuned_eigenvalues = get_all_eigenvalues(scale,"/home/s33zganj/VERA1/checkpoints/fourier_vera_model.pth", False)
+            # plot_eigen_hist(pre_trained_eigenvalues,finetuned_eigenvalues)
+
+
+        # print(f"r:{r}")
+        # print(f"kaiming: {kaiming_acc}")
+        # print(f"svd: {svd_acc}")
+        # print(f"wavelet: {wavelet_acc}")
+        # print(f"fourier: {fourier_acc}")
+        
+       
     # # Plotting
     # plt.figure(figsize=(10, 6))
     # for acc, label in zip([svd_acc, wavelet_acc, fourier_acc], ["SVD", "Wavelet", "Fourier"]):
@@ -456,6 +676,28 @@ def main():
     # plt.title("Loss Convergence Across Different Initialization Strategies for Shared Matrices")
     # plt.legend()
     # plt.savefig("Loss_convergence2.png")
+    # plt.show()
+
+    # # rank accuracy plot
+    # # n_parameters = [0.0185,0.0185,0.0186,0.0188, 0.0192,0.02,0.0215,0.0246,0.0307]
+    # k = [0.846,0.8502,0.8469,0.8439,0.8345,0.8485,0.842,0.848,0.8402]
+    # svd = [0.8623,0.8649,0.8649,0.8633,0.8635,0.8623,0.8623,0.8612,0.863]
+    # wav = [0.8666,0.8604,0.8595,0.8601,0.8612,0.8616,0.8594,0.8637,0.8643]
+    # f = [0.8602,0.8603,0.8639,0.8676,0.8621,0.8639,0.8617,0.8625,0.8614]
+    # # Plot the rank-accuracy curves
+    # plt.figure(figsize=(8, 6))
+    # plt.plot(rank, k, marker='o', linestyle='-', label='Kaiming Init')
+    # plt.plot(rank, svd, marker='s', linestyle='-', label='SVD Init')
+    # plt.plot(rank, wav, marker='^', linestyle='-', label='Wavelet Init')
+    # plt.plot(rank, f, marker='d', linestyle='-', label='Fourier Init')
+
+    # # Labels and title
+    # plt.xlabel('Rank')
+    # plt.ylabel('Accuracy')
+    # plt.title('Rank-Accuracy Plot for Different Initializations')
+    # plt.legend()
+    # plt.grid(True)
+    # plt.savefig("rank_accuracy.png")
     # plt.show()
 
 def train_and_evaluate(model, dataset, device, num_classes,seed):
@@ -514,7 +756,7 @@ def train_and_evaluate(model, dataset, device, num_classes,seed):
     # Optimizer and Scheduler
     optimizer = torch.optim.AdamW(
         [{"params": model.head.parameters(), "lr": 4e-3}, 
-         {"params": (p for n, p in model.named_parameters() if n.startswith("vera_lambda") and p.requires_grad)}],
+         {"params": (p for n, p in model.named_parameters() if "vera_lambda" in n and p.requires_grad)}],
         lr=2e-2, weight_decay=0.01,
     )
     scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=0.01, total_iters=1000)
@@ -522,6 +764,8 @@ def train_and_evaluate(model, dataset, device, num_classes,seed):
     # Training
     model, epoch_losses = train_model(model, train_loader, test_loader, optimizer, device, scheduler)
     
+    
+
     # # Plot the loss convergence
         # plt.plot(range(len(epoch_losses1)), epoch_losses1, label="Kaiming Uniform")
         # plt.plot(range(len(epoch_losses1)), epoch_losses2, label="SVD")
@@ -532,9 +776,14 @@ def train_and_evaluate(model, dataset, device, num_classes,seed):
         # plt.show()
         # plt.savefig("/home/s33zganj/VERA1/convergence_plot.png")
     # Evaluation
+
     facc = test(model, test_loader)
     print(f"Final Accuracy: {facc*100}")
-    return facc
+
+    
+
+    
+    return model,optimizer, facc
 
 if __name__ == "__main__":
     main()

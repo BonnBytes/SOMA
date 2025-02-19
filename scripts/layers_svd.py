@@ -88,10 +88,10 @@ class VeraLayer(nn.Module):
         # self.vera_lambda_d = nn.Parameter(torch.randn(r), requires_grad=True)
         # print(self.vera_lambda_b.shape)
 
-        vera_B, lambda_d , vera_A = torch.linalg.svd(self.base_layer.weight, full_matrices=False)
-        self.vera_B = nn.Parameter(vera_B[:, :r], requires_grad=False)
-        self.vera_lambda_d = nn.Parameter(lambda_d[:r], requires_grad=True)
-        self.vera_A = nn.Parameter(vera_A[:r, :], requires_grad=False)
+        U, S , Vt = torch.linalg.svd(self.base_layer.weight, full_matrices=False)
+        self.vera_B = nn.Parameter(U[:, :r], requires_grad=False)
+        self.vera_lambda_d = nn.Parameter(S[:r], requires_grad=True)
+        self.vera_A = nn.Parameter(Vt[:r, :], requires_grad=False)
 
         # print(f"base layer:{self.base_layer.weight.shape}")
         # print(f"self.vera_A:{self.vera_A.shape}")

@@ -155,15 +155,15 @@ class Linear(nn.Linear, VeraLayer):
         result = self.base_layer(x, *args, **kwargs)
         device = self.base_layer.weight.device
         #  Each active_adapter in self.active_adapters will be processed in the upcoming steps to modify the result.
-        A = self.vera_A.to(device)
-        B = self.vera_B.to(device)
+        A = self.vera_A.to(device).to(torch.float32)
+        B = self.vera_B.to(device).to(torch.float32)
 
 
         # lambda_d = self.vera_lambda_d.to(device).type(torch.complex128)
-        lambda_b = self.vera_lambda_b.to(device).type(torch.complex128)
+        lambda_b = self.vera_lambda_b.to(device).to(torch.float32)
 
-        vera_lambda_d = self.vera_lambda_d.to(device).type(torch.complex128)
-        fixed_lambda_d = self.fixed_lambda_d.to(device).type(torch.complex128)
+        vera_lambda_d = self.vera_lambda_d.to(device).to(torch.float32)
+        fixed_lambda_d = self.fixed_lambda_d.to(device).to(torch.float32)
         
         lambda_d = torch.cat(
             [vera_lambda_d, fixed_lambda_d], dim=0
@@ -172,9 +172,9 @@ class Linear(nn.Linear, VeraLayer):
         dropout = self.vera_dropout["vera"]
         re = torch.diag(lambda_b) @ B @ torch.diag(lambda_d) @ A
         
-        adapted_result = x.type(torch.complex128) @ re
+        adapted_result = x @ re
         # Add the original base layer output with the adapted result.
-        result = result + torch.abs(adapted_result).to(torch.float32)
+        result = result + adapted_result.to(torch.float32)
         # print(f"result:{result}")
         # print(f"Type of result: {type(result)}, Dtype of result: {result.dtype}, Is Complex: {torch.is_complex(result)}")
 
