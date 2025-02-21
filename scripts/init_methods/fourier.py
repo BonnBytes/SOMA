@@ -49,7 +49,7 @@ class BaseFourierLayer(nn.Module):
         self.vera_lambda_d = nn.Parameter(torch.randn(r), requires_grad=True)
         self.fixed_lambda_d = nn.Parameter(torch.randn(self.out_features - r), requires_grad=False)
         # Generate fixed random permutation matrix Pi
-        self.pi = random_permutation_matrix(self.out_features)
+        self.pi = random_permutation_matrix(self.out_features).to(dtype=torch.cfloat)
 
         self.vera_B = nn.Parameter(vera_B.T, requires_grad=False)
         self.vera_A = nn.Parameter(self.pi @ vera_A.T, requires_grad=False)
@@ -73,8 +73,9 @@ class FourierLinear(nn.Linear, BaseFourierLayer):
 
     def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         result = self.base_layer(x, *args, **kwargs)
-        A, B = self.vera_A.to(x.device).to(torch.float32), self.vera_B.to(x.device).to(torch.float32)
-        lambda_b, lambda_d = self.vera_lambda_b.to(x.device).to(torch.float32), torch.cat([self.vera_lambda_d.to(x.device), self.fixed_lambda_d.to(x.device)], dim=0).to(torch.float32)
+        A, B = self.vera_A.to(x.device), self.vera_B.to(x.device)
+        lambda_b, lambda_d = self.vera_lambda_b.to(x.device).to(dtype=torch.cfloat), torch.cat([self.vera_lambda_d.to(x.device), self.fixed_lambda_d.to(x.device)], dim=0).to(dtype=torch.cfloat)
         re = torch.diag(lambda_b) @ B @ torch.diag(lambda_d) @ A
-        return result + x @ re
+        abs_value = torch.abs(x @ re)
+        return result + abs_value
 

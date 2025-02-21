@@ -20,6 +20,7 @@ class VeraTrainer:
             "Food101": 101, 
             "RESISC45": 45,
             "Flowers102": 102
+
         }
         self.dataset = dataset
         self.num_classes = self.dataset_classes.get(dataset, 0)
@@ -52,32 +53,34 @@ class VeraTrainer:
         imag_part = torch.sin(-2 * torch.pi * torch.outer(indices, indices) / n)
         return torch.complex(real_part, imag_part)
 
-    # -------------------- Model Modification --------------------
+    # -------------------- Model Creation --------------------
 
     def create_model(self, pre_trained_check_path):
         model = create_model("vit_base_patch16_224_in21k", pretrained=True, drop_path_rate=0.1)
         torch.save(model.state_dict(), pre_trained_check_path)
         # Modify model head and set requires_grad to True for the head parameters
         model.head = torch.nn.Linear(model.head.in_features, self.num_classes)
-        for param in model.head.parameters():
-            param.requires_grad = True
         self._param_numbers(model)
         out_dim, in_dim = self._find_dim(model)
         return model, in_dim, out_dim
 
+    # -------------------- Model Modification --------------------
 
     @staticmethod
     def freeze_parameters(model):
+
         for name, param in model.named_parameters():
             if "vera_lambda_b" in name or "vera_lambda_d" in name:
                 param.requires_grad = True
             else:
                 param.requires_grad = False
 
-
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         trainable_params = round(trainable_params / 1000000, 4)
         print(f"Trainable #Parameters: {trainable_params}M")
+        
+        for param in model.head.parameters():
+            param.requires_grad = True
 
         return model
 
@@ -110,7 +113,7 @@ class VeraTrainer:
         return model
 
     def apply_vera_to_attention(self, model, linear_out_dim, linear_in_dim, scale, rank):
-        generator = torch.Generator(device="cpu").manual_seed(0)
+        generator = torch.Generator(device="cuda").manual_seed(0)
         vera_A = self._kaiming_init((rank, linear_in_dim), generator)
         vera_B = self._kaiming_init((linear_out_dim, rank), generator)
         return self._modify_qkv_layers(model, linear_out_dim, linear_in_dim,
@@ -128,8 +131,8 @@ class VeraTrainer:
                                       scale, rank, 'wavelet', matrix_A, matrix_B)
 
     def apply_vera_to_attention_Fourier(self, model, linear_out_dim, linear_in_dim, scale, rank):
-        matrix_A = self.fourier_matrix(768).real
-        matrix_B = self.fourier_matrix(768).real.T / 768
+        matrix_A = self.fourier_matrix(768)
+        matrix_B = torch.conj(matrix_A.T) / 768
         matrix_A_copy = matrix_A.clone()
         matrix_A_copy[768 // 2:, :] = 0.0
         return self._modify_qkv_layers(model, linear_out_dim, linear_in_dim,
@@ -407,7 +410,7 @@ class VeraTrainer:
 # Main Execution
 
 if __name__ == "__main__":
-    dataset_name = "Food101"
+    dataset_name = "Cifar100"
     trainer = VeraTrainer(dataset=dataset_name, seed=1)
     scale_array = [0.01]
     rank = [256]
