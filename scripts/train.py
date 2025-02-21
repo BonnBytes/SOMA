@@ -18,7 +18,8 @@ class VeraTrainer:
         self.dataset_classes = {
             "Cifar100": 100, 
             "Food101": 101, 
-            "RESISC45": 45
+            "RESISC45": 45,
+            "Flowers102": 102
         }
         self.dataset = dataset
         self.num_classes = self.dataset_classes.get(dataset, 0)
@@ -53,9 +54,9 @@ class VeraTrainer:
 
     # -------------------- Model Modification --------------------
 
-    def create_model(self):
+    def create_model(self, pre_trained_check_path):
         model = create_model("vit_base_patch16_224_in21k", pretrained=True, drop_path_rate=0.1)
-        torch.save(model.state_dict(), "/home/s33zganj/VERA1/checkpoints/vit_base_patch16_224_in21k_Food101.pth")
+        torch.save(model.state_dict(), pre_trained_check_path)
         # Modify model head and set requires_grad to True for the head parameters
         model.head = torch.nn.Linear(model.head.in_features, self.num_classes)
         for param in model.head.parameters():
@@ -165,13 +166,16 @@ class VeraTrainer:
             train_size = int(0.8 * len(full_dataset))
             test_size = len(full_dataset) - train_size
             train_dataset, test_dataset = torch.utils.data.random_split(full_dataset, [train_size, test_size])
+        elif dataset_type == 'Flowers102':
+            train_dataset = datasets.Flowers102(root="./data", split="train", download=True, transform=transform)
+            test_dataset = datasets.Flowers102(root="./data", split="test", download=True, transform=transform)
         
         train_loader = self._create_loader(train_dataset)
         test_loader = self._create_loader(test_dataset, shuffle=False)
         return train_loader, test_loader
 
     def _get_transforms(self, dataset_type):
-        if dataset_type == 'RESISC45':
+        if dataset_type in ['RESISC45', 'Flowers102']:
             return transforms.Compose([
                 transforms.Resize((224, 224)),
                 transforms.ToTensor(),
@@ -403,7 +407,8 @@ class VeraTrainer:
 # Main Execution
 
 if __name__ == "__main__":
-    trainer = VeraTrainer(dataset="Food101", seed=1)
+    dataset_name = "Food101"
+    trainer = VeraTrainer(dataset=dataset_name, seed=1)
     scale_array = [0.01]
     rank = [256]
     results = {}
@@ -411,51 +416,52 @@ if __name__ == "__main__":
     for r in rank:
         for scale in scale_array:
             print(f"\nTraining with rank={r}, scale={scale}")
+            pre_trained_check_path = f"/home/s33zganj/VERA1/checkpoints/vit_base_patch16_224_in21k_{dataset_name}.pth"
             
 
-           # # Kaiming
-            model, in_dim, out_dim = trainer.create_model()
+            ## Kaiming
+            model, in_dim, out_dim = trainer.create_model(pre_trained_check_path)
             model = trainer.apply_vera_to_attention(model, out_dim, in_dim, scale, r)
             model = trainer.freeze_parameters(model)
-            finetuned_model, optimizer, acc = trainer.train_and_evaluate(model, "Food101")
+            finetuned_model, optimizer, acc = trainer.train_and_evaluate(model, dataset_name)
             results.setdefault('Kaiming', []).append(acc)
-            checkpoint_path = "/home/s33zganj/VERA1/checkpoints/kaiming_vera_model_Food101.pth"
+            checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/kaiming_vera_model_{dataset_name}.pth"
             trainer._save_checkpoint(checkpoint_path, finetuned_model, optimizer, acc)
-            pretrained_eigenvalues = trainer._get_all_eigenvalues(scale, "/home/s33zganj/VERA1/checkpoints/vit_base_patch16_224_in21k_Food101.pth", True)
-            trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues, "/home/s33zganj/VERA1/histograms/eigen_hist_kaiming_Food101.png")
+            pretrained_eigenvalues = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
+            trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues, f"/home/s33zganj/VERA1/histograms/eigen_hist_kaiming_{dataset_name}.png")
 
             ## SVD
-            model, _, _ = trainer.create_model()
+            model, _, _ = trainer.create_model(pre_trained_check_path)
             model = trainer.apply_vera_to_attention_SVD(model, 768, 768, scale, r)
             model = trainer.freeze_parameters(model)
-            finetuned_model, optimizer, acc = trainer.train_and_evaluate(model, "Food101")
+            finetuned_model, optimizer, acc = trainer.train_and_evaluate(model, dataset_name)
             results.setdefault('SVD', []).append(acc)
-            checkpoint_path = "/home/s33zganj/VERA1/checkpoints/svd_vera_model_Food101.pth"
+            checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/svd_vera_model_{dataset_name}.pth"
             trainer._save_checkpoint(checkpoint_path, finetuned_model, optimizer, acc)
-            pretrained_eigenvalues = trainer._get_all_eigenvalues(scale, "/home/s33zganj/VERA1/checkpoints/vit_base_patch16_224_in21k_Food101.pth", True)
-            trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues, "/home/s33zganj/VERA1/histograms/eigen_hist_svd_Food101.png")
+            pretrained_eigenvalues = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
+            trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues, f"/home/s33zganj/VERA1/histograms/eigen_hist_svd_{dataset_name}.png")
 
             # Wavelet
-            model, _, _ = trainer.create_model()
+            model, _, _ = trainer.create_model(pre_trained_check_path)
             model = trainer.apply_vera_to_attention_Wavelet(model, 768, 768, scale, r)
             model = trainer.freeze_parameters(model)
-            finetuned_model, optimizer, acc = trainer.train_and_evaluate(model, "Food101")
+            finetuned_model, optimizer, acc = trainer.train_and_evaluate(model, dataset_name)
             results.setdefault('Wavelet', []).append(acc)
-            checkpoint_path = "/home/s33zganj/VERA1/checkpoints/wavelet_vera_model_Food101.pth"
+            checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/wavelet_vera_model_{dataset_name}.pth"
             trainer._save_checkpoint(checkpoint_path, finetuned_model, optimizer, acc)
-            pretrained_eigenvalues = trainer._get_all_eigenvalues(scale, "/home/s33zganj/VERA1/checkpoints/vit_base_patch16_224_in21k_Food101.pth", True)
-            trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues, "/home/s33zganj/VERA1/histograms/eigen_hist_wavelet_Food101.png")
+            pretrained_eigenvalues = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
+            trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues, f"/home/s33zganj/VERA1/histograms/eigen_hist_wavelet_{dataset_name}.png")
 
             ## Fourier
-            model, _, _ = trainer.create_model()
+            model, _, _ = trainer.create_model(pre_trained_check_path)
             model = trainer.apply_vera_to_attention_Fourier(model, 768, 768, scale, r)
             model = trainer.freeze_parameters(model)
-            finetuned_model, optimizer, acc = trainer.train_and_evaluate(model, "Food101")
+            finetuned_model, optimizer, acc = trainer.train_and_evaluate(model, dataset_name)
             results.setdefault('Fourier', []).append(acc)
-            checkpoint_path = "/home/s33zganj/VERA1/checkpoints/fourier_vera_model_Food101.pth"
+            checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/fourier_vera_model_{dataset_name}.pth"
             trainer._save_checkpoint(checkpoint_path, finetuned_model, optimizer, acc)
-            pretrained_eigenvalues = trainer._get_all_eigenvalues(scale, "/home/s33zganj/VERA1/checkpoints/vit_base_patch16_224_in21k_Food101.pth", True)
-            trainer.eing_his(scale, checkpoint_path,  pretrained_eigenvalues, "/home/s33zganj/VERA1/histograms/eigen_hist_fourier_Food101.png")
+            pretrained_eigenvalues = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
+            trainer.eing_his(scale, checkpoint_path,  pretrained_eigenvalues, f"/home/s33zganj/VERA1/histograms/eigen_hist_fourier_{dataset_name}.png")
 
 
 
