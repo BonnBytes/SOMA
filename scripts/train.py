@@ -11,16 +11,21 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 from res_dataloader import RESISC45Dataset
+from pcam_dataloader import PCAMDataset
 import pywt
 import ptwt
+import gdown
+import h5py
+
 class VeraTrainer:
     def __init__(self, dataset="Cifar100", seed=1, device="cuda"):
         self.dataset_classes = {
             "Cifar100": 100, 
             "Food101": 101, 
             "RESISC45": 45,
-            "Flowers102": 102
-
+            "Flowers102": 102,
+            "PCAM": 2,
+            "CelebA": 2
         }
         self.dataset = dataset
         self.num_classes = self.dataset_classes.get(dataset, 0)
@@ -113,7 +118,7 @@ class VeraTrainer:
         return model
 
     def apply_vera_to_attention(self, model, linear_out_dim, linear_in_dim, scale, rank):
-        generator = torch.Generator(device="cuda").manual_seed(0)
+        generator = torch.Generator(device="cpu").manual_seed(0)
         vera_A = self._kaiming_init((rank, linear_in_dim), generator)
         vera_B = self._kaiming_init((linear_out_dim, rank), generator)
         return self._modify_qkv_layers(model, linear_out_dim, linear_in_dim,
@@ -172,6 +177,23 @@ class VeraTrainer:
         elif dataset_type == 'Flowers102':
             train_dataset = datasets.Flowers102(root="./data", split="train", download=True, transform=transform)
             test_dataset = datasets.Flowers102(root="./data", split="test", download=True, transform=transform)
+        elif dataset_type == 'PCAM':
+            try:
+                y_train = np.array(h5py.File('/home/s33zganj/VERA1/scripts/data/pcam/camelyonpatch_level_2_split_train_y.h5', 'r')['y'])
+                x_train = np.array(h5py.File('/home/s33zganj/VERA1/scripts/data/pcam/camelyonpatch_level_2_split_train_x.h5', 'r')['x'])
+                y_test = np.array(h5py.File('/home/s33zganj/VERA1/scripts/data/pcam/camelyonpatch_level_2_split_test_y.h5', 'r')['y'])
+                x_test = np.array(h5py.File('/home/s33zganj/VERA1/scripts/data/pcam/camelyonpatch_level_2_split_test_x.h5', 'r')['x'])
+            except OSError:
+                raise NotImplementedError("Error while loading the dataset, make sure files are available.")
+
+            train_dataset = PCAMDataset(x_train, y_train, transform=transform)
+            test_dataset = PCAMDataset(x_test, y_test, transform=transform)
+
+        elif dataset_type == 'CelebA':
+            get_smile = lambda attr: attr[31]
+            train_dataset = datasets.CelebA(root="/home/s33zganj/VERA1/scripts/data", split="train", target_type="attr", target_transform=get_smile, download=False, transform=transform)
+            test_dataset = datasets.CelebA(root="/home/s33zganj/VERA1/scripts/data", split="test", target_type="attr", target_transform=get_smile, download=False, transform=transform)
+
         
         train_loader = self._create_loader(train_dataset)
         test_loader = self._create_loader(test_dataset, shuffle=False)
@@ -250,6 +272,7 @@ class VeraTrainer:
 
 
         eigenvalues = []
+        weights = []
         qkv_weight = None
 
         for block_idx in range(12):
@@ -303,15 +326,15 @@ class VeraTrainer:
                 qkv_weight = model_state_dict[attn_key + '.base_layer.weight'].to(device) + scale * qkv_delta_weight
             
             qkv_weight = qkv_weight.cpu().detach().numpy()
+            weights.append(qkv_weight)
             singular_vals = np.linalg.svd(qkv_weight, compute_uv=False)
-            
             eigenvalues.append(singular_vals)
 
-        return np.concatenate(eigenvalues)    
+        return np.concatenate(eigenvalues),  np.concatenate(weights)
 
-    def eing_his(self, scale, checkpoint_path, pre_trained_eigenvalues, his_path):
-        finetuned_eigenvalues = self._get_all_eigenvalues(scale, checkpoint_path, False)
-        self.plot_eigen_hist(pre_trained_eigenvalues, finetuned_eigenvalues, his_path)
+    def eing_his(self, scale, checkpoint_path, pre_trained_eigenvalues, pre_trained_weights, his_path_eig, his_path_weight):
+        finetuned_eigenvalues, finetuned_weights = self._get_all_eigenvalues(scale, checkpoint_path, False)
+        self.plot_eigen_hist(pre_trained_eigenvalues, finetuned_eigenvalues, pre_trained_weights, finetuned_weights, his_path_eig, his_path_weight)
         return
 
 
@@ -377,7 +400,7 @@ class VeraTrainer:
         plt.close()
 
 
-    def plot_eigen_hist(self, pre_trained_eigenvalues, finetuned_eigenvalues, save_path="eigen_hist.png", title="Eigenvalue Distribution"):
+    def plot_eigen_hist(self, pre_trained_eigenvalues, finetuned_eigenvalues, pre_trained_weights, finetuned_weights, save_path_eig ,save_path_weight, title="Eigenvalue Distribution"):
         plt.figure(figsize=(10, 6))
 
         # Compute bin edges using a finer resolution
@@ -403,14 +426,42 @@ class VeraTrainer:
 
         plt.title(title)
         plt.legend()
-        plt.savefig(save_path, dpi=300)  # Higher resolution for better clarity
+        plt.savefig(save_path_eig, dpi=300)  # Higher resolution for better clarity
+        plt.close()
+
+        plt.figure(figsize=(10, 6))
+
+        # Compute bin edges using a finer resolution
+        min_val = min(np.min(pre_trained_weights), np.min(finetuned_weights))
+        max_val = max(np.max(pre_trained_weights), np.max(finetuned_weights))
+        num_bins = max(
+            int(np.ceil(np.log2(len(pre_trained_weights)) + 1)),
+            int(np.ceil(np.log2(len(finetuned_weights)) + 1))
+        )
+
+        # Create finer bin edges
+        bins = np.linspace(min_val, max_val, num_bins * 5)  # Increase bin resolution
+
+        plt.hist(pre_trained_weights, bins=bins, alpha=0.3, label='Pretrained',
+                density=True, edgecolor='blue', linewidth=1.0)
+
+        plt.hist(finetuned_weights, bins=bins, alpha=0.8, label='Finetuned',
+                density=True, edgecolor='red', linewidth=1.0)
+
+
+        plt.xlabel('Weight Magnitude')
+        plt.ylabel('Frequency')
+
+        plt.title('Weight Distribution')
+        plt.legend()
+        plt.savefig(save_path_weight, dpi=300)  # Higher resolution for better clarity
         plt.close()
 
 
 # Main Execution
 
 if __name__ == "__main__":
-    dataset_name = "Cifar100"
+    dataset_name = "CelebA"
     trainer = VeraTrainer(dataset=dataset_name, seed=1)
     scale_array = [0.01]
     rank = [256]
@@ -420,7 +471,7 @@ if __name__ == "__main__":
         for scale in scale_array:
             print(f"\nTraining with rank={r}, scale={scale}")
             pre_trained_check_path = f"/home/s33zganj/VERA1/checkpoints/vit_base_patch16_224_in21k_{dataset_name}.pth"
-            
+
 
             ## Kaiming
             model, in_dim, out_dim = trainer.create_model(pre_trained_check_path)
@@ -430,8 +481,10 @@ if __name__ == "__main__":
             results.setdefault('Kaiming', []).append(acc)
             checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/kaiming_vera_model_{dataset_name}.pth"
             trainer._save_checkpoint(checkpoint_path, finetuned_model, optimizer, acc)
-            pretrained_eigenvalues = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
-            trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues, f"/home/s33zganj/VERA1/histograms/eigen_hist_kaiming_{dataset_name}.png")
+            pretrained_eigenvalues, pretrained_weights = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
+            his_path_eig = f"/home/s33zganj/VERA1/histograms/eigenvalues/eigen_hist_kaiming_{dataset_name}.png"
+            his_path_weight = f"/home/s33zganj/VERA1/histograms/weights/weight_hist_kaiming_{dataset_name}.png"
+            trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues,pretrained_weights, his_path_eig, his_path_weight)
 
             ## SVD
             model, _, _ = trainer.create_model(pre_trained_check_path)
@@ -441,8 +494,10 @@ if __name__ == "__main__":
             results.setdefault('SVD', []).append(acc)
             checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/svd_vera_model_{dataset_name}.pth"
             trainer._save_checkpoint(checkpoint_path, finetuned_model, optimizer, acc)
-            pretrained_eigenvalues = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
-            trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues, f"/home/s33zganj/VERA1/histograms/eigen_hist_svd_{dataset_name}.png")
+            pretrained_eigenvalues, pretrained_weights = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
+            his_path_eig = f"/home/s33zganj/VERA1/histograms/eigenvalues/eigen_hist_svd_{dataset_name}.png"
+            his_path_weight = f"/home/s33zganj/VERA1/histograms/weights/weight_hist_svd_{dataset_name}.png"
+            trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues, pretrained_weights, his_path_eig, his_path_weight)
 
             # Wavelet
             model, _, _ = trainer.create_model(pre_trained_check_path)
@@ -452,8 +507,10 @@ if __name__ == "__main__":
             results.setdefault('Wavelet', []).append(acc)
             checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/wavelet_vera_model_{dataset_name}.pth"
             trainer._save_checkpoint(checkpoint_path, finetuned_model, optimizer, acc)
-            pretrained_eigenvalues = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
-            trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues, f"/home/s33zganj/VERA1/histograms/eigen_hist_wavelet_{dataset_name}.png")
+            pretrained_eigenvalues, pretrained_weights = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
+            his_path_eig = f"/home/s33zganj/VERA1/histograms/eigenvalues/eigen_hist_wavelet_{dataset_name}.png"
+            his_path_weight = f"/home/s33zganj/VERA1/histograms/weights/weight_hist_wavelet_{dataset_name}.png"
+            trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues, pretrained_weights, his_path_eig, his_path_weight)
 
             ## Fourier
             model, _, _ = trainer.create_model(pre_trained_check_path)
@@ -463,8 +520,10 @@ if __name__ == "__main__":
             results.setdefault('Fourier', []).append(acc)
             checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/fourier_vera_model_{dataset_name}.pth"
             trainer._save_checkpoint(checkpoint_path, finetuned_model, optimizer, acc)
-            pretrained_eigenvalues = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
-            trainer.eing_his(scale, checkpoint_path,  pretrained_eigenvalues, f"/home/s33zganj/VERA1/histograms/eigen_hist_fourier_{dataset_name}.png")
+            pretrained_eigenvalues, pretrained_weights = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
+            his_path_eig = f"/home/s33zganj/VERA1/histograms/eigenvalues/eigen_hist_fourier_{dataset_name}.png"
+            his_path_weight = f"/home/s33zganj/VERA1/histograms/weights/weight_hist_fourier_{dataset_name}.png"
+            trainer.eing_his(scale, checkpoint_path,  pretrained_eigenvalues, pretrained_weights, his_path_eig, his_path_weight)
 
 
 

@@ -110,3 +110,39 @@ def test_random_permutation_matrix():
     
     assert P.shape == (size, size)
     assert torch.allclose(P @ P.T, torch.eye(size, dtype=torch.float64)), "P should be orthogonal."
+# -------------------- Test wavelet linear layer --------------------
+
+    def test_wavelet_linear_forward():
+    base_layer = torch.nn.Linear(10, 30)
+    vera_A = torch.rand(10, 10)
+    vera_B = torch.rand(30, 10)
+    wavelet_layer = WaveletLinear(base_layer, vera_A, vera_B, r=10)
+    x = torch.rand(5, 10)
+    output = wavelet_layer(x)
+    assert output.shape == (5, 30)
+
+# -------------------- Test train, if parameters updating --------------------
+
+def test_update_parameters(trainer):
+    """Check if parameters are correctly frozen."""
+    pre_trained_check_path = 'test_pretrained.pth'
+    model, out_dim, in_dim = trainer.create_model(pre_trained_check_path)
+    model = trainer.apply_vera_to_attention(model, out_dim, in_dim, scale=0.1, rank=256)
+    model = trainer.freeze_parameters(model)
+
+    optimizer = trainer._get_optimizer(model)
+    
+    initial_params = {name: param.clone().detach() for name, param in model.named_parameters() if param.requires_grad}
+    initial_lrs = {id(param): group["lr"] for group in optimizer.param_groups for param in group["params"]}
+    
+    optimizer.zero_grad()
+    dummy_input = torch.rand(1, 3, 224, 224)
+    output = model(dummy_input)
+    loss = output.sum()
+    loss.backward()
+    optimizer.step()
+    
+    for name, param in model.named_parameters():
+        if name in initial_params:
+            assert not torch.equal(initial_params[name], param), f"Parameter {name} did not update as expected"
+            assert optimizer.param_groups[0]["lr"] == initial_lrs[id(param)], f"Learning rate mismatch for parameter {name}"
