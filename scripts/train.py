@@ -149,7 +149,7 @@ class VeraTrainer:
         model.reset_classifier(self.num_classes)
         train_loader, test_loader = self._get_data_loaders(dataset_type)
         
-        optimizer = self._get_optimizer(model)
+        optimizer = self._get_optimizer(model, dataset_type)
         total_iters = num_epochs * len(train_loader)
         scheduler = torch.optim.lr_scheduler.LinearLR(
             optimizer, start_factor=1.0, end_factor=0.01, total_iters=total_iters
@@ -160,23 +160,74 @@ class VeraTrainer:
         return model, optimizer, facc
 
     # -------------------- Helper Functions --------------------
+    def _create_10_per_class_subset(self, dataset):
+        """Creates a subset with 10 samples per class from the given dataset."""
+        # Extract targets if available
+        if hasattr(dataset, 'targets'):
+            targets = dataset.targets
+        else:
+            # Extract labels manually if 'targets' attribute is missing
+            targets = [dataset[i][1] for i in range(len(dataset))]
+
+        # Group indices by class
+        class_indices = defaultdict(list)
+        for idx, label in enumerate(targets):
+            class_indices[label].append(idx)
+
+        # Select 10 samples per class using the seed for reproducibility
+        selected_indices = []
+        for label in class_indices:
+            indices = class_indices[label]
+            np.random.seed(self.seed)
+            shuffled_indices = np.random.permutation(indices)
+            selected_indices.extend(shuffled_indices[:10].tolist())
+
+        return torch.utils.data.Subset(dataset, selected_indices)
+
+    def _split_resisc45(self, full_dataset):
+        """Splits RESISC45 into 10 samples per class for training and the rest for testing."""
+        # Extract targets from the dataset
+        targets = [full_dataset[i][1] for i in range(len(full_dataset))]
+
+        # Group indices by class
+        class_indices = defaultdict(list)
+        for idx, label in enumerate(targets):
+            class_indices[label].append(idx)
+
+        # Split each class into 10 training samples and remaining for testing
+        train_indices = []
+        test_indices = []
+        for label in class_indices:
+            indices = class_indices[label]
+            np.random.seed(self.seed)
+            shuffled_indices = np.random.permutation(indices)
+            train_indices.extend(shuffled_indices[:10].tolist())
+            test_indices.extend(shuffled_indices[10:].tolist())
+
+        return (
+            torch.utils.data.Subset(full_dataset, train_indices),
+            torch.utils.data.Subset(full_dataset, test_indices)
+        )
+
     def _get_data_loaders(self, dataset_type):
         transform = self._get_transforms(dataset_type)
         
         if dataset_type == 'Cifar100':
-            train_dataset = datasets.CIFAR100(root="./data", train=True, download=True, transform=transform)
+            original_train = datasets.CIFAR100(root="./data", train=True, download=True, transform=transform)
+            train_dataset = self._create_10_per_class_subset(original_train)
             test_dataset = datasets.CIFAR100(root="./data", train=False, download=True, transform=transform)
         elif dataset_type == 'Food101':
-            train_dataset = datasets.Food101(root="./data", split="train", download=True, transform=transform)
+            original_train = datasets.Food101(root="./data", split="train", download=True, transform=transform)
+            train_dataset = self._create_10_per_class_subset(original_train)
             test_dataset = datasets.Food101(root="./data", split="test", download=True, transform=transform)
         elif dataset_type == 'RESISC45':
             full_dataset = RESISC45Dataset(root_dir='/home/s33zganj/VERA1/data/NWPU-RESISC45', transform=transform)
-            train_size = int(0.8 * len(full_dataset))
-            test_size = len(full_dataset) - train_size
-            train_dataset, test_dataset = torch.utils.data.random_split(full_dataset, [train_size, test_size])
+            train_dataset, test_dataset = self._split_resisc45(full_dataset)
         elif dataset_type == 'Flowers102':
-            train_dataset = datasets.Flowers102(root="./data", split="train", download=True, transform=transform)
+            original_train = datasets.Flowers102(root="./data", split="train", download=True, transform=transform)
+            train_dataset = self._create_10_per_class_subset(original_train)
             test_dataset = datasets.Flowers102(root="./data", split="test", download=True, transform=transform)
+
         elif dataset_type == 'PCAM':
             try:
                 y_train = np.array(h5py.File('/home/s33zganj/VERA1/scripts/data/pcam/camelyonpatch_level_2_split_train_y.h5', 'r')['y'])
@@ -195,36 +246,37 @@ class VeraTrainer:
             test_dataset = datasets.CelebA(root="/home/s33zganj/VERA1/scripts/data", split="test", target_type="attr", target_transform=get_smile, download=False, transform=transform)
 
         
-        train_loader = self._create_loader(train_dataset)
+        train_loader = self._create_loader(train_dataset, drop=True)
         test_loader = self._create_loader(test_dataset, shuffle=False)
         return train_loader, test_loader
 
     def _get_transforms(self, dataset_type):
-        if dataset_type in ['RESISC45', 'Flowers102']:
-            return transforms.Compose([
-                transforms.Resize((224, 224)),
+        return transforms.Compose([
+                transforms.Resize((224, 224), interpolation=3),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-            ])
-        return transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
         ])
 
-    def _create_loader(self, dataset, shuffle=True):
+
+    def _create_loader(self, dataset, shuffle=True, drop=False):
         return torch.utils.data.DataLoader(
             dataset, batch_size=64, shuffle=shuffle,
-            worker_init_fn=lambda _: np.random.seed(self.seed)
+            drop_last=drop,
+            num_workers=4, pin_memory=True
         )
 
-    def _get_optimizer(self, model):
+    def _get_optimizer(self, model, dataset):
+        #add pcam, celebA and dndd
+        Head_lr_dic = {'Cifar100':4e-3, 'Food101': 4e-2, 'RESISC45': 5e-3, 'Flowers102': 4e-3, 'PCAM': 4e-3, 'CelebA': 4e-3}
+        lr_dic = {'Cifar100':2e-2, 'Food101': 4e-2, 'RESISC45': 7e-2, 'Flowers102': 4e-2, 'PCAM': 4e-3, 'CelebA': 4e-3}
+        print(lr_dic[dataset])
+        print(Head_lr_dic[dataset])
         return torch.optim.AdamW(
             [
-                {"params": model.head.parameters(), "lr": 4e-3},
+                {"params": model.head.parameters(), "lr": Head_lr_dic[dataset]},
                 {"params": (p for n, p in model.named_parameters() if "vera_lambda" in n and p.requires_grad)}
             ],
-            lr=2e-2, weight_decay=0.01
+            lr=lr_dic[dataset], weight_decay=0.01
         )
 
     def _find_dim(self, model) -> tuple[int, int]:
