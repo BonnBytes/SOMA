@@ -30,7 +30,10 @@ class BaseFourierLayer(nn.Module):
     def reset_vera_parameters(self, d_initial: float = 0.1):
         with torch.no_grad():
             nn.init.zeros_(self.vera_lambda_d).fill_(d_initial)
+<<<<<<< HEAD
             nn.init.zeros_(self.fixed_lambda_d).fill_(d_initial)
+=======
+>>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
             nn.init.zeros_(self.vera_lambda_b)
 
     def _move_adapter_to_device_of_base_layer(self):
@@ -46,9 +49,15 @@ class BaseFourierLayer(nn.Module):
         d_initial: float = 0.1
         ):
         """Define the parameter initialization specific to Fourier Linear."""
+<<<<<<< HEAD
         self.vera_lambda_b = nn.Parameter(torch.zeros(self.out_features), requires_grad=True)
         self.vera_lambda_d = nn.Parameter(torch.ones(r), requires_grad=True)
         self.fixed_lambda_d = nn.Parameter(torch.ones(self.out_features - r), requires_grad=False)
+=======
+        self.vera_lambda_b = nn.Parameter(torch.ones(self.out_features), requires_grad=True)
+        self.vera_lambda_d = nn.Parameter(torch.randn(r), requires_grad=True)
+        self.fixed_lambda_d = nn.Parameter(torch.randn(self.out_features - r), requires_grad=False)
+>>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
         # Generate fixed random permutation matrix Pi
         self.pi = random_permutation_matrix(self.out_features).to(dtype=torch.cdouble)
 
@@ -63,7 +72,10 @@ class FourierLinear(nn.Linear, BaseFourierLayer):
     def __init__(
         self,
         base_layer,
+<<<<<<< HEAD
         weight,
+=======
+>>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
         vera_A,
         vera_B,     
         r: int = 0,
@@ -79,5 +91,9 @@ class FourierLinear(nn.Linear, BaseFourierLayer):
         lambda_b, lambda_d = self.vera_lambda_b.to(x.device).to(dtype=torch.cdouble), torch.cat([self.vera_lambda_d.to(x.device), self.fixed_lambda_d.to(x.device)], dim=0).to(dtype=torch.cdouble)
         re = torch.diag(lambda_b) @ B @ torch.diag(lambda_d) @ A
         abs_value = torch.abs(x.to(dtype=torch.cdouble) @ re)
+<<<<<<< HEAD
         return abs_value.to(torch.float32)
+=======
+        return result + abs_value.to(torch.float32)
+>>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
 

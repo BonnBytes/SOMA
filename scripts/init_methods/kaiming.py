@@ -45,12 +45,21 @@ class BaseKaimingLayer(nn.Module):
         ):
         """Define the parameter initialization specific to Kaiming Linear."""
 
+<<<<<<< HEAD
         self.vera_lambda_b = nn.Parameter(torch.zeros(self.out_features), requires_grad=True)
         self.vera_lambda_d = nn.Parameter(torch.ones(r)* 0.1, requires_grad=True)
         self.vera_A = nn.Parameter(vera_A[:, : self.in_features], requires_grad=False)
         self.vera_B = nn.Parameter(vera_B[: self.out_features, :], requires_grad=False)
 
         # self.reset_vera_parameters(d_initial)
+=======
+        self.vera_lambda_b = nn.Parameter(torch.ones(self.out_features), requires_grad=True)
+        self.vera_lambda_d = nn.Parameter(torch.randn(r), requires_grad=True)
+        self.vera_A = nn.Parameter(vera_A[:, : self.in_features], requires_grad=False)
+        self.vera_B = nn.Parameter(vera_B[: self.out_features, :], requires_grad=False)
+
+        self.reset_vera_parameters(d_initial)
+>>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
         self._move_adapter_to_device_of_base_layer()
 
 class KaimingLinear(nn.Linear, BaseKaimingLayer):
@@ -58,7 +67,10 @@ class KaimingLinear(nn.Linear, BaseKaimingLayer):
     def __init__(
         self,
         base_layer,
+<<<<<<< HEAD
         weight,
+=======
+>>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
         vera_A,
         vera_B,     
         r: int = 0,
@@ -66,14 +78,25 @@ class KaimingLinear(nn.Linear, BaseKaimingLayer):
     ):
         BaseKaimingLayer.__init__(self, base_layer, **kwargs)
         self.update_layer(vera_A, vera_B, r)
+<<<<<<< HEAD
         self.weight = weight
     
 
     def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+=======
+    
+
+    def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+        result = self.base_layer(x, *args, **kwargs)
+>>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
         A= self.vera_A.to(x.device)
         B = self.vera_B.to(x.device)
         lambda_b, lambda_d = self.vera_lambda_b.to(x.device), self.vera_lambda_d.to(x.device)
         re = torch.diag(lambda_b) @ B @ torch.diag(lambda_d) @ A
+<<<<<<< HEAD
         delta = x @ re
         return delta
+=======
+        return result + x @ re
+>>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
 
