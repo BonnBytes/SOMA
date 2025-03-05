@@ -14,7 +14,7 @@ class RESISC45Dataset(Dataset):
         self.transform = transform
         self.classes = sorted(os.listdir(root_dir))  # List of class names
         self.class_to_idx = {cls_name: idx for idx, cls_name in enumerate(self.classes)}
-        
+
         self.image_paths = []
         self.labels = []
         for cls_name in self.classes:
@@ -30,8 +30,8 @@ class RESISC45Dataset(Dataset):
         img_path = self.image_paths[idx]
         label = self.labels[idx]
         image = Image.open(img_path).convert("RGB")  # Ensure 3-channel RGB
-        
+
         if self.transform:
             image = self.transform(image)
-        
+
         return image, label
