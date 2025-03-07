@@ -16,12 +16,9 @@ import pywt
 import ptwt
 import gdown
 import h5py
-<<<<<<< HEAD
 from collections import defaultdict
 from avalanche.evaluation.metrics.accuracy import Accuracy
 from timm.scheduler import CosineLRScheduler
-=======
->>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
 
 class VeraTrainer:
     def __init__(self, dataset="Cifar100", seed=1, device="cuda"):
@@ -67,25 +64,18 @@ class VeraTrainer:
     # -------------------- Model Creation --------------------
 
     def create_model(self, pre_trained_check_path):
-<<<<<<< HEAD
-        model = create_model("vit_base_patch16_224_in21k", checkpoint_path= "/home/s33zganj/VERA1/checkpoints/imagenet21k_ViT-B_16.npz", drop_path_rate=0.1)
+        model = create_model("vit_base_patch16_224.augreg_in21k", checkpoint_path= "/home/s33zganj/VERA1/checkpoints/imagenet21k_ViT-B_16.npz", drop_path_rate=0.1)
+        torch.save(model.state_dict(), pre_trained_check_path)
         # Modify model head and set requires_grad to True for the head parameters
         # model.head = torch.nn.Linear(model.head.in_features, self.num_classes)
         model.head = nn.Sequential(
         nn.Dropout(0.2),  
         nn.Linear(model.head.in_features, self.num_classes)
         )
+        
         self._param_numbers(model)
         out_dim, in_dim = self._find_dim(model)
         
-=======
-        model = create_model("vit_base_patch16_224_in21k", pretrained=True, drop_path_rate=0.1)
-        torch.save(model.state_dict(), pre_trained_check_path)
-        # Modify model head and set requires_grad to True for the head parameters
-        model.head = torch.nn.Linear(model.head.in_features, self.num_classes)
-        self._param_numbers(model)
-        out_dim, in_dim = self._find_dim(model)
->>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
         return model, in_dim, out_dim
 
     # -------------------- Model Modification --------------------
@@ -94,10 +84,7 @@ class VeraTrainer:
     def freeze_parameters(model):
 
         for name, param in model.named_parameters():
-<<<<<<< HEAD
-            print(name)
-=======
->>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
+            # print(name)
             if "vera_lambda_b" in name or "vera_lambda_d" in name:
                 param.requires_grad = True
             else:
@@ -110,10 +97,7 @@ class VeraTrainer:
         for param in model.head.parameters():
             param.requires_grad = True
 
-<<<<<<< HEAD
 
-=======
->>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
         return model
 
     def _modify_qkv_layers(self, model, linear_out_dim, linear_in_dim,
@@ -138,17 +122,11 @@ class VeraTrainer:
                 scale=scale
 
             )
-<<<<<<< HEAD
             # new_mod.weight = mod.weight
             # new_mod.bias = mod.bias if b else None
             model.get_submodule(".".join(parent))[int(k)].attn.qkv= new_mod
             # model.get_submodule(".".join(parent))[int(k)].attn.qkv.base_layer.weight = mod.weight
             # model.get_submodule(".".join(parent))[int(k)].attn.qkv.base_layer.bias = mod.bias
-=======
-            new_mod.weight = mod.weight
-            new_mod.bias = mod.bias if b else None
-            model.get_submodule(".".join(parent))[int(k)].attn.qkv = new_mod
->>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
         
         return model
 
@@ -167,6 +145,26 @@ class VeraTrainer:
         matrix_A = ptwt.matmul_transform.construct_boundary_a("sym4", length=768, device="cpu").to_dense()
         matrix_B = ptwt.matmul_transform.construct_boundary_s("sym4", length=768, device="cpu").to_dense()
         matrix_A[768//2:, :] = 0.0
+
+        # # Get 1D Haar wavelet filters
+        # haar = pywt.Wavelet('haar')
+        # dec_lo = np.array(haar.dec_lo)  # Low-pass filter
+        # dec_hi = np.array(haar.dec_hi)  # High-pass filter
+
+        # # Create 2D filters using outer product
+        # LL = np.outer(dec_lo, dec_lo)  # Low-low (approximation)
+        # LH = np.outer(dec_lo, dec_hi)  # Low-high (horizontal detail)
+        # HL = np.outer(dec_hi, dec_lo)  # High-low (vertical detail)
+        # HH = np.outer(dec_hi, dec_hi)  # High-high (diagonal detail)
+
+        # # Stack the 2D filters into a single transformation matrix
+        # # we use only the LL (approximation) component
+        # matrix_A = np.kron(np.eye(768 // 2), LL)  # Kronecker product to scale to 768x768
+        # matrix_B = matrix_A.T  # Transpose for orthogonality
+
+        # matrix_A = torch.tensor(matrix_A, dtype=torch.float64)
+        # matrix_B = torch.tensor(matrix_B, dtype=torch.float64)
+
         return self._modify_qkv_layers(model, linear_out_dim, linear_in_dim,
                                       scale, rank, 'wavelet', matrix_A, matrix_B)
 
@@ -177,53 +175,39 @@ class VeraTrainer:
         matrix_A_copy[768 // 2:, :] = 0.0
         return self._modify_qkv_layers(model, linear_out_dim, linear_in_dim,
                                       scale, rank, 'fourier', matrix_A_copy, matrix_B)
-<<<<<<< HEAD
    
     
 
     # -------------------- Training Core --------------------
-    def train_and_evaluate(self, model, dataset_type, num_epochs=10, warmup_ratio=0.1):
-=======
-
-
-    # -------------------- Training Core --------------------
-    def train_and_evaluate(self, model, dataset_type, num_epochs=10):
->>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
+    def train_and_evaluate(self, model, dataset_type, num_epochs=10, warmup_ratio=0.2):
         model.reset_classifier(self.num_classes)
         train_loader, test_loader = self._get_data_loaders(dataset_type)
         
         optimizer = self._get_optimizer(model, dataset_type)
         total_iters = num_epochs * len(train_loader)
-<<<<<<< HEAD
 
         dataset_size = len(train_loader.dataset) 
         batch_size = train_loader.batch_size
         total_training_steps = num_epochs * (dataset_size // batch_size)
         # Warmup scheduler: gradually increase LR for first `warmup_steps`
-        warmup_steps = int(warmup_ratio * total_iters)
-        # warmup_steps = 50
+        warmup_steps = int(warmup_ratio * total_training_steps)
+        # warmup_steps = 100
         # Warmup scheduler: gradually increase LR for first `warmup_steps`
         warmup_scheduler = torch.optim.lr_scheduler.LambdaLR(
             optimizer, lr_lambda=lambda step: step / warmup_steps if step < warmup_steps else 1.0
         )
 
         scheduler = torch.optim.lr_scheduler.LinearLR(
-            optimizer, start_factor=1.0, end_factor=0.01, total_iters=total_iters - warmup_steps
-    
+            optimizer, start_factor=1.0, end_factor=0.01, total_iters=total_training_steps - warmup_steps
         )
         
         # scheduler = CosineLRScheduler(optimizer, t_initial=100, warmup_t=10, lr_min=1e-5, warmup_lr_init=1e-6)
-
-        # scheduler = CosineLRScheduler(optimizer, t_initial=10, warmup_t=1, lr_min=1e-5, warmup_lr_init=1e-6)
+        #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        #optimizer, T_max=total_training_steps - warmup_steps, eta_min=1e-6
+        #)
+        #scheduler = CosineLRScheduler(optimizer, t_initial=10, warmup_t=3, lr_min=1e-5, warmup_lr_init=1e-6)
         # scheduler = None
         model, _ = self._train_model(model, train_loader, test_loader, optimizer, warmup_scheduler, scheduler, num_epochs, warmup_steps)
-=======
-        scheduler = torch.optim.lr_scheduler.LinearLR(
-            optimizer, start_factor=1.0, end_factor=0.01, total_iters=total_iters
-        )
-        
-        model, _ = self._train_model(model, train_loader, test_loader, optimizer, scheduler, num_epochs)
->>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
         facc = self.test(model, test_loader)
         return model, optimizer, facc
 
@@ -272,37 +256,39 @@ class VeraTrainer:
             train_indices.extend(shuffled_indices[:10].tolist())
             test_indices.extend(shuffled_indices[10:].tolist())
 
-        return (
-            torch.utils.data.Subset(full_dataset, train_indices),
-            torch.utils.data.Subset(full_dataset, test_indices)
-        )
+        # return (
+        #     torch.utils.data.Subset(full_dataset, train_indices),
+        #     torch.utils.data.Subset(full_dataset, test_indices)
+        # )
+        return train_indices, test_indices
 
     def _get_data_loaders(self, dataset_type):
-<<<<<<< HEAD
         transform, test_transform = self._get_transforms(dataset_type)
-=======
-        transform = self._get_transforms(dataset_type)
->>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
         
         if dataset_type == 'Cifar100':
             original_train = datasets.CIFAR100(root="./data", train=True, download=True, transform=transform)
             train_dataset = self._create_10_per_class_subset(original_train)
-<<<<<<< HEAD
             test_dataset = datasets.CIFAR100(root="./data", train=False, download=True, transform=test_transform)
-=======
-            test_dataset = datasets.CIFAR100(root="./data", train=False, download=True, transform=transform)
->>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
         elif dataset_type == 'Food101':
             original_train = datasets.Food101(root="./data", split="train", download=True, transform=transform)
             train_dataset = self._create_10_per_class_subset(original_train)
-            test_dataset = datasets.Food101(root="./data", split="test", download=True, transform=transform)
+            test_dataset = datasets.Food101(root="./data", split="test", download=True, transform=test_transform)
         elif dataset_type == 'RESISC45':
-            full_dataset = RESISC45Dataset(root_dir='/home/s33zganj/VERA1/data/NWPU-RESISC45', transform=transform)
-            train_dataset, test_dataset = self._split_resisc45(full_dataset)
+            full_dataset = RESISC45Dataset(root_dir='/home/s33zganj/VERA1/data/NWPU-RESISC45', transform=None)
+            train_indices, test_indices = self._split_resisc45(full_dataset)
+
+            train_dataset = torch.utils.data.Subset(
+                RESISC45Dataset(root_dir='/home/s33zganj/VERA1/data/NWPU-RESISC45', transform=transform), 
+                train_indices
+            )
+            test_dataset = torch.utils.data.Subset(
+                RESISC45Dataset(root_dir='/home/s33zganj/VERA1/data/NWPU-RESISC45', transform=test_transform), 
+                test_indices
+            )
         elif dataset_type == 'Flowers102':
             original_train = datasets.Flowers102(root="./data", split="train", download=True, transform=transform)
             train_dataset = self._create_10_per_class_subset(original_train)
-            test_dataset = datasets.Flowers102(root="./data", split="test", download=True, transform=transform)
+            test_dataset = datasets.Flowers102(root="./data", split="test", download=True, transform=test_transform)
 
         elif dataset_type == 'PCAM':
             try:
@@ -327,18 +313,6 @@ class VeraTrainer:
         return train_loader, test_loader
 
     def _get_transforms(self, dataset_type):
-<<<<<<< HEAD
-        # transform = transforms.Compose([
-        # transforms.RandomResizedCrop(224, scale=(0.95, 1.0)),  # Even less aggressive cropping
-        # transforms.RandomHorizontalFlip(p=0.2),  # Lower probability of flipping
-        # transforms.RandomRotation(2),  # Very small rotation
-        # transforms.ColorJitter(brightness=0.05, contrast=0.05, saturation=0.05, hue=0.02),  # Much less color jitter
-        # transforms.RandomAffine(degrees=0, translate=(0.02, 0.02)),  # Smaller translation
-        # transforms.ToTensor(),  # Convert image to tensor
-        # transforms.RandomErasing(p=0.1, scale=(0.01, 0.05)),  # Lower probability & area of erasing
-        # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        # ])
-
         transform = transforms.Compose([
         transforms.RandomResizedCrop(224, scale=(0.7, 1.0)),
         transforms.RandomHorizontalFlip(p=0.5),
@@ -346,18 +320,14 @@ class VeraTrainer:
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
-
+        # transforms.RandomHorizontalFlip(p=0.5),
+        
         test_transform = transforms.Compose([
-        transforms.Resize((224, 224), interpolation=3),
-=======
-        return transforms.Compose([
                 transforms.Resize((224, 224), interpolation=3),
->>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
                 transforms.ToTensor(),
                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
 
-<<<<<<< HEAD
         return transform, test_transform
     
         # return transforms.Compose([
@@ -366,8 +336,6 @@ class VeraTrainer:
         #         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         # ])
 
-=======
->>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
 
     def _create_loader(self, dataset, shuffle=True, drop=False):
         return torch.utils.data.DataLoader(
@@ -377,7 +345,6 @@ class VeraTrainer:
         )
 
     def _get_optimizer(self, model, dataset):
-<<<<<<< HEAD
         # print("_________________get optimizer_________________________")
         # for n, p in model.named_parameters():
         #     if "vera_lambda" in n and p.requires_grad:
@@ -386,21 +353,16 @@ class VeraTrainer:
         # for n in model.head.parameters():
         #     print(f"head: {n}")
 
-=======
->>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
         #add pcam, celebA and dndd
         Head_lr_dic = {'Cifar100':4e-3, 'Food101': 4e-2, 'RESISC45': 5e-3, 'Flowers102': 4e-3, 'PCAM': 4e-3, 'CelebA': 4e-3}
         lr_dic = {'Cifar100':2e-2, 'Food101': 4e-2, 'RESISC45': 7e-2, 'Flowers102': 4e-2, 'PCAM': 4e-3, 'CelebA': 4e-3}
         print(lr_dic[dataset])
         print(Head_lr_dic[dataset])
-<<<<<<< HEAD
         trainable = []
         for n, p in model.named_parameters():
             if p.requires_grad:
                 trainable.append(p)
             
-=======
->>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
         return torch.optim.AdamW(
             [
                 {"params": model.head.parameters(), "lr": Head_lr_dic[dataset]},
@@ -529,47 +491,30 @@ class VeraTrainer:
 
 
     # -------------------- Training/Evaluation --------------------
-<<<<<<< HEAD
     def _train_model(self, model, train_loader, test_loader, optimizer, warmup_scheduler, scheduler, num_epochs=10, warmup_steps=0):
         model.to(self.device)
         model.train()
         loss_fn = nn.CrossEntropyLoss(label_smoothing=0.1)
         epoch_losses = []
         epoch_acc = []
-
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         
         for ep in (pbar := tqdm(range(num_epochs))):
             batch_losses = []
             batch_acc = []
+            
             correct, total = 0, 0
             for x, y in train_loader:
                 x, y = x.to(self.device), y.to(self.device)
                 out = model(x)
                 loss =loss_fn(out, y)
                 optimizer.zero_grad()
-=======
-    def _train_model(self, model, train_loader, test_loader, optimizer, scheduler, num_epochs=10):
-        model.to(self.device)
-        model.train()
-        loss_fn = nn.CrossEntropyLoss()
-        epoch_losses = []
-        
-        for ep in (pbar := tqdm(range(num_epochs))):
-            batch_losses = []
-            for x, y in train_loader:
-                x, y = x.to(self.device), y.to(self.device)
-                optimizer.zero_grad()
-                loss = loss_fn(model(x), y)
->>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
                 loss.backward()
                 # # Only update weights if learning rate is not too small
                  #if optimizer.param_groups[0]['lr'] > 1e-6:
                     # optimizer.step()
-<<<<<<< HEAD
                 
                 optimizer.step()
-                
-
                 preds = torch.argmax(out, dim=1)
                 correct += (preds == y).sum().item()
                 total += y.size(0)
@@ -592,15 +537,6 @@ class VeraTrainer:
             
             print(f"Epoch {ep}: Train Accuracy={round(correct / total, 4)}")
 
-=======
-                optimizer.step()
-                batch_losses.append(loss.item())
-                pbar.set_description(f"Loss: {loss.item():.4f}")
-            
-            epoch_losses.append(np.mean(batch_losses))
-            if scheduler is not None:
-                scheduler.step()
->>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
             acc = self.test(model, test_loader)
             print(f"Epoch {ep}: Accuracy={acc:.4f}")
         
@@ -692,15 +628,10 @@ class VeraTrainer:
 # Main Execution
 
 if __name__ == "__main__":
-<<<<<<< HEAD
     dataset_name = "Cifar100"
     trainer = VeraTrainer(dataset=dataset_name, seed=1)
-    scale_array = [2]
-=======
-    dataset_name = "CelebA"
-    trainer = VeraTrainer(dataset=dataset_name, seed=1)
-    scale_array = [0.01]
->>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
+    scale_array = [1000,0.3,100,10,0.5,4.5,0.8,0.9,1.0,1.5]
+    # scale_array = [2.0,2.5,3.0,3.5,4.0]
     rank = [256]
     results = {}
 
@@ -714,14 +645,11 @@ if __name__ == "__main__":
             model, in_dim, out_dim = trainer.create_model(pre_trained_check_path)
             model = trainer.apply_vera_to_attention(model, out_dim, in_dim, scale, r)
             model = trainer.freeze_parameters(model)
-<<<<<<< HEAD
 
             trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
             trainable_params = round(trainable_params / 1000000, 4)
             print(f"Trainable #Parameters with Head params: {trainable_params}M")
 
-=======
->>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
             finetuned_model, optimizer, acc = trainer.train_and_evaluate(model, dataset_name)
             results.setdefault('Kaiming', []).append(acc)
             checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/kaiming_vera_model_{dataset_name}.pth"
@@ -731,66 +659,15 @@ if __name__ == "__main__":
             his_path_weight = f"/home/s33zganj/VERA1/histograms/weights/weight_hist_kaiming_{dataset_name}.png"
             trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues,pretrained_weights, his_path_eig, his_path_weight)
 
-<<<<<<< HEAD
-            # ## SVD
-            # model, _, _ = trainer.create_model(pre_trained_check_path)
-            # model = trainer.apply_vera_to_attention_SVD(model, 768, 768, scale, r)
-            # model = trainer.freeze_parameters(model)
-
-            # trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-            # trainable_params = round(trainable_params / 1000000, 4)
-            # print(f"Trainable #Parameters with Head params: {trainable_params}M")
-
-            # finetuned_model, optimizer, acc = trainer.train_and_evaluate(model, dataset_name)
-            # results.setdefault('SVD', []).append(acc)
-            # checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/svd_vera_model_{dataset_name}.pth"
-            # trainer._save_checkpoint(checkpoint_path, finetuned_model, optimizer, acc)
-            # pretrained_eigenvalues, pretrained_weights = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
-            # his_path_eig = f"/home/s33zganj/VERA1/histograms/eigenvalues/eigen_hist_svd_{dataset_name}.png"
-            # his_path_weight = f"/home/s33zganj/VERA1/histograms/weights/weight_hist_svd_{dataset_name}.png"
-            # trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues, pretrained_weights, his_path_eig, his_path_weight)
-
-            # # Wavelet
-            # model, _, _ = trainer.create_model(pre_trained_check_path)
-
-            # model = trainer.apply_vera_to_attention_Wavelet(model, 768, 768, scale, r)
-            # model = trainer.freeze_parameters(model)
-
-            # trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-            # trainable_params = round(trainable_params / 1000000, 4)
-            # print(f"Trainable #Parameters with Head params: {trainable_params}M")
-
-            # finetuned_model, optimizer, acc = trainer.train_and_evaluate(model, dataset_name)
-            # results.setdefault('Wavelet', []).append(acc)
-            # checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/wavelet_vera_model_{dataset_name}.pth"
-            # trainer._save_checkpoint(checkpoint_path, finetuned_model, optimizer, acc)
-            # pretrained_eigenvalues, pretrained_weights = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
-            # his_path_eig = f"/home/s33zganj/VERA1/histograms/eigenvalues/eigen_hist_wavelet_{dataset_name}.png"
-            # his_path_weight = f"/home/s33zganj/VERA1/histograms/weights/weight_hist_wavelet_{dataset_name}.png"
-            # trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues, pretrained_weights, his_path_eig, his_path_weight)
-
-            # ## Fourier
-            # model, _, _ = trainer.create_model(pre_trained_check_path)
-            # model = trainer.apply_vera_to_attention_Fourier(model, 768, 768, scale, r)
-            # model = trainer.freeze_parameters(model)
-
-            # trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-            # trainable_params = round(trainable_params / 1000000, 4)
-            # print(f"Trainable #Parameters with Head params: {trainable_params}M")
-
-            # finetuned_model, optimizer, acc = trainer.train_and_evaluate(model, dataset_name)
-            # results.setdefault('Fourier', []).append(acc)
-            # checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/fourier_vera_model_{dataset_name}.pth"
-            # trainer._save_checkpoint(checkpoint_path, finetuned_model, optimizer, acc)
-            # pretrained_eigenvalues, pretrained_weights = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
-            # his_path_eig = f"/home/s33zganj/VERA1/histograms/eigenvalues/eigen_hist_fourier_{dataset_name}.png"
-            # his_path_weight = f"/home/s33zganj/VERA1/histograms/weights/weight_hist_fourier_{dataset_name}.png"
-            # trainer.eing_his(scale, checkpoint_path,  pretrained_eigenvalues, pretrained_weights, his_path_eig, his_path_weight)
-=======
-            ## SVD
+            # # ## SVD
             model, _, _ = trainer.create_model(pre_trained_check_path)
             model = trainer.apply_vera_to_attention_SVD(model, 768, 768, scale, r)
             model = trainer.freeze_parameters(model)
+
+            trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            trainable_params = round(trainable_params / 1000000, 4)
+            print(f"Trainable #Parameters with Head params: {trainable_params}M")
+
             finetuned_model, optimizer, acc = trainer.train_and_evaluate(model, dataset_name)
             results.setdefault('SVD', []).append(acc)
             checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/svd_vera_model_{dataset_name}.pth"
@@ -800,10 +677,16 @@ if __name__ == "__main__":
             his_path_weight = f"/home/s33zganj/VERA1/histograms/weights/weight_hist_svd_{dataset_name}.png"
             trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues, pretrained_weights, his_path_eig, his_path_weight)
 
-            # Wavelet
+             # Wavelet
             model, _, _ = trainer.create_model(pre_trained_check_path)
+
             model = trainer.apply_vera_to_attention_Wavelet(model, 768, 768, scale, r)
             model = trainer.freeze_parameters(model)
+
+            trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            trainable_params = round(trainable_params / 1000000, 4)
+            print(f"Trainable #Parameters with Head params: {trainable_params}M")
+
             finetuned_model, optimizer, acc = trainer.train_and_evaluate(model, dataset_name)
             results.setdefault('Wavelet', []).append(acc)
             checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/wavelet_vera_model_{dataset_name}.pth"
@@ -813,10 +696,15 @@ if __name__ == "__main__":
             his_path_weight = f"/home/s33zganj/VERA1/histograms/weights/weight_hist_wavelet_{dataset_name}.png"
             trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues, pretrained_weights, his_path_eig, his_path_weight)
 
-            ## Fourier
+            # # ## Fourier
             model, _, _ = trainer.create_model(pre_trained_check_path)
             model = trainer.apply_vera_to_attention_Fourier(model, 768, 768, scale, r)
             model = trainer.freeze_parameters(model)
+
+            trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            trainable_params = round(trainable_params / 1000000, 4)
+            print(f"Trainable #Parameters with Head params: {trainable_params}M")
+
             finetuned_model, optimizer, acc = trainer.train_and_evaluate(model, dataset_name)
             results.setdefault('Fourier', []).append(acc)
             checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/fourier_vera_model_{dataset_name}.pth"
@@ -825,7 +713,6 @@ if __name__ == "__main__":
             his_path_eig = f"/home/s33zganj/VERA1/histograms/eigenvalues/eigen_hist_fourier_{dataset_name}.png"
             his_path_weight = f"/home/s33zganj/VERA1/histograms/weights/weight_hist_fourier_{dataset_name}.png"
             trainer.eing_his(scale, checkpoint_path,  pretrained_eigenvalues, pretrained_weights, his_path_eig, his_path_weight)
->>>>>>> c4b8a3b014b7c0c3f6a3fb1c4d5afbe6842d1dfc
 
 
 
