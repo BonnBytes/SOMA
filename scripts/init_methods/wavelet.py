@@ -50,10 +50,17 @@ class BaseWaveletrLayer(nn.Module):
         self.fixed_lambda_d = nn.Parameter(torch.ones(self.out_features - r)* 0.1, requires_grad=False)
         # Generate fixed random permutation matrix Pi
         self.pi = random_permutation_matrix(self.out_features)
+<<<<<<< HEAD
         
         self.vera_B = nn.Parameter(vera_B, requires_grad=False)
         #self.vera_A = nn.Parameter(self.pi @ vera_A.T, requires_grad=False)
         self.vera_A = nn.Parameter(vera_A, requires_grad=False)
+=======
+
+        self.vera_B = nn.Parameter(vera_B.T, requires_grad=False)
+        #self.vera_A = nn.Parameter(self.pi @ vera_A.T, requires_grad=False)
+        self.vera_A = nn.Parameter(vera_A.T, requires_grad=False)
+>>>>>>> b18130e119cd334987e3e27e1d69fb590fbdd576
 
         # self.reset_vera_parameters(d_initial)
         self._move_adapter_to_device_of_base_layer()
