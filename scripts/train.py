@@ -67,25 +67,11 @@ class VeraTrainer:
         model = create_model("vit_base_patch16_224.augreg_in21k", checkpoint_path= "/home/s33zganj/VERA1/checkpoints/imagenet21k_ViT-B_16.npz", drop_path_rate=0.1)
         torch.save(model.state_dict(), pre_trained_check_path)
         # Modify model head and set requires_grad to True for the head parameters
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> b18130e119cd334987e3e27e1d69fb590fbdd576
         model.head = torch.nn.Linear(model.head.in_features, self.num_classes)
         #model.head = nn.Sequential(
         #nn.Dropout(0.2),
         #nn.Linear(model.head.in_features, self.num_classes)
         #)
-<<<<<<< HEAD
-=======
-=======
-        # model.head = torch.nn.Linear(model.head.in_features, self.num_classes)
-        model.head = nn.Sequential(
-        nn.Dropout(0.2),  
-        nn.Linear(model.head.in_features, self.num_classes)
-        )
->>>>>>> c8369a7aed4203dd1899b75123d805e06edd4bc7
->>>>>>> b18130e119cd334987e3e27e1d69fb590fbdd576
         
         self._param_numbers(model)
         out_dim, in_dim = self._find_dim(model)
@@ -158,7 +144,7 @@ class VeraTrainer:
     def apply_vera_to_attention_Wavelet(self, model, linear_out_dim, linear_in_dim, scale, rank):
         matrix_A = ptwt.matmul_transform.construct_boundary_a("sym4", length=768, device="cpu").to_dense()
         matrix_B = ptwt.matmul_transform.construct_boundary_s("sym4", length=768, device="cpu").to_dense()
-        matrix_A[768//2:, :] = 0.0
+        # matrix_A[768//2:, :] = 0.0
 
         # # Get 1D Haar wavelet filters
         # haar = pywt.Wavelet('haar')
@@ -193,15 +179,7 @@ class VeraTrainer:
     
 
     # -------------------- Training Core --------------------
-<<<<<<< HEAD
     def train_and_evaluate(self, model, dataset_type, num_epochs=10, warmup_ratio=0.001):
-=======
-<<<<<<< HEAD
-    def train_and_evaluate(self, model, dataset_type, num_epochs=10, warmup_ratio=0.1):
-=======
-    def train_and_evaluate(self, model, dataset_type, num_epochs=10, warmup_ratio=0.2):
->>>>>>> c8369a7aed4203dd1899b75123d805e06edd4bc7
->>>>>>> b18130e119cd334987e3e27e1d69fb590fbdd576
         model.reset_classifier(self.num_classes)
         train_loader, test_loader = self._get_data_loaders(dataset_type)
         
@@ -212,15 +190,7 @@ class VeraTrainer:
         batch_size = train_loader.batch_size
         total_training_steps = num_epochs * (dataset_size // batch_size)
         # Warmup scheduler: gradually increase LR for first `warmup_steps`
-<<<<<<< HEAD
         warmup_steps = int(warmup_ratio * total_iters)
-=======
-<<<<<<< HEAD
-        warmup_steps = int(warmup_ratio * total_iters)
-=======
-        warmup_steps = int(warmup_ratio * total_training_steps)
->>>>>>> c8369a7aed4203dd1899b75123d805e06edd4bc7
->>>>>>> b18130e119cd334987e3e27e1d69fb590fbdd576
         # warmup_steps = 100
         # Warmup scheduler: gradually increase LR for first `warmup_steps`
         warmup_scheduler = torch.optim.lr_scheduler.LambdaLR(
@@ -228,30 +198,14 @@ class VeraTrainer:
         )
 
         scheduler = torch.optim.lr_scheduler.LinearLR(
-<<<<<<< HEAD
             optimizer, start_factor=1.0, end_factor=0.01, total_iters=total_iters - warmup_steps
-=======
-<<<<<<< HEAD
-            optimizer, start_factor=1.0, end_factor=0.01, total_iters=total_iters - warmup_steps
-=======
-            optimizer, start_factor=1.0, end_factor=0.01, total_iters=total_training_steps - warmup_steps
->>>>>>> c8369a7aed4203dd1899b75123d805e06edd4bc7
->>>>>>> b18130e119cd334987e3e27e1d69fb590fbdd576
         )
         
         # scheduler = CosineLRScheduler(optimizer, t_initial=100, warmup_t=10, lr_min=1e-5, warmup_lr_init=1e-6)
         #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         #optimizer, T_max=total_training_steps - warmup_steps, eta_min=1e-6
         #)
-<<<<<<< HEAD
         #scheduler = CosineLRScheduler(optimizer, t_initial=10, warmup_t=3, warmup_lr_init=1e-6)
-=======
-<<<<<<< HEAD
-        #scheduler = CosineLRScheduler(optimizer, t_initial=10, warmup_t=3, warmup_lr_init=1e-6)
-=======
-        #scheduler = CosineLRScheduler(optimizer, t_initial=10, warmup_t=3, lr_min=1e-5, warmup_lr_init=1e-6)
->>>>>>> c8369a7aed4203dd1899b75123d805e06edd4bc7
->>>>>>> b18130e119cd334987e3e27e1d69fb590fbdd576
         # scheduler = None
         model, _ = self._train_model(model, train_loader, test_loader, optimizer, warmup_scheduler, scheduler, num_epochs, warmup_steps)
         facc = self.test(model, test_loader)
@@ -359,10 +313,6 @@ class VeraTrainer:
         return train_loader, test_loader
 
     def _get_transforms(self, dataset_type):
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> b18130e119cd334987e3e27e1d69fb590fbdd576
         #transform = transforms.Compose([
         #transforms.RandomResizedCrop(224, scale=(0.7, 1.0)),
         #transforms.RandomHorizontalFlip(p=0.5),
@@ -371,8 +321,6 @@ class VeraTrainer:
         #transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         #])
 
-<<<<<<< HEAD
-=======
         
         #test_transform = transforms.Compose([
         #        transforms.Resize((224, 224), interpolation=3),
@@ -394,38 +342,6 @@ class VeraTrainer:
                 transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
         ])
 
-=======
-        transform = transforms.Compose([
-        transforms.RandomResizedCrop(224, scale=(0.7, 1.0)),
-        transforms.RandomHorizontalFlip(p=0.5),
-        transforms.ColorJitter(brightness=0.1, contrast=0.1),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
-        # transforms.RandomHorizontalFlip(p=0.5),
->>>>>>> b18130e119cd334987e3e27e1d69fb590fbdd576
-        
-        #test_transform = transforms.Compose([
-        #        transforms.Resize((224, 224), interpolation=3),
-        #        transforms.ToTensor(),
-        #        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        #])
-
-        transform = transforms.Compose([
-        transforms.RandomResizedCrop(224, interpolation=3),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
-        ])
-
-        test_transform = transforms.Compose([
-                transforms.Resize(256, interpolation=3),
-                transforms.CenterCrop(224),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
-        ])
-
->>>>>>> c8369a7aed4203dd1899b75123d805e06edd4bc7
         return transform, test_transform
     
         # return transforms.Compose([
@@ -595,16 +511,7 @@ class VeraTrainer:
         loss_fn = nn.CrossEntropyLoss()
         epoch_losses = []
         epoch_acc = []
-<<<<<<< HEAD
         #label_smoothing=0.1
-=======
-<<<<<<< HEAD
-        #label_smoothing=0.1
-=======
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
-        
->>>>>>> c8369a7aed4203dd1899b75123d805e06edd4bc7
->>>>>>> b18130e119cd334987e3e27e1d69fb590fbdd576
         for ep in (pbar := tqdm(range(num_epochs))):
             batch_losses = []
             batch_acc = []
@@ -633,28 +540,13 @@ class VeraTrainer:
                 
                 warmup_scheduler.step()
                 # After warmup ends, use the main scheduler
-<<<<<<< HEAD
                 #if scheduler is not None
-=======
-<<<<<<< HEAD
-                #if scheduler is not None
-=======
->>>>>>> c8369a7aed4203dd1899b75123d805e06edd4bc7
->>>>>>> b18130e119cd334987e3e27e1d69fb590fbdd576
                 if scheduler is not None and warmup_scheduler.last_epoch >= warmup_steps:
                     scheduler.step()
 
             epoch_losses.append(np.mean(batch_losses))
 
-<<<<<<< HEAD
             #if scheduler is not None:
-=======
-<<<<<<< HEAD
-            #if scheduler is not None:
-=======
-            # if scheduler is not None:
->>>>>>> c8369a7aed4203dd1899b75123d805e06edd4bc7
->>>>>>> b18130e119cd334987e3e27e1d69fb590fbdd576
             #     scheduler.step(ep)
             
             print(f"Epoch {ep}: Train Accuracy={round(correct / total, 4)}")
@@ -751,20 +643,9 @@ class VeraTrainer:
 if __name__ == "__main__":
     dataset_name = "Cifar100"
     trainer = VeraTrainer(dataset=dataset_name, seed=1)
-<<<<<<< HEAD
     # scale_array = [8/256,16/256,1/256,0.8,0.9,1.0,1.5,2.0,2.5,3.0,3.5,4.0,1000,0.3,100,10,0.5,4.5]
     #scale_array = [2.0,2.5,3.0,3.5,4.0]
     scale_array = [1]
-=======
-<<<<<<< HEAD
-    #scale_array = [1000,0.3,100,10,0.5,4.5,0.8,0.9,1.0,1.5]
-    # scale_array = [2.0,2.5,3.0,3.5,4.0]
-    scale_array = [1/256]
-=======
-    scale_array = [1000,0.3,100,10,0.5,4.5,0.8,0.9,1.0,1.5]
-    # scale_array = [2.0,2.5,3.0,3.5,4.0]
->>>>>>> c8369a7aed4203dd1899b75123d805e06edd4bc7
->>>>>>> b18130e119cd334987e3e27e1d69fb590fbdd576
     rank = [256]
     results = {}
 
