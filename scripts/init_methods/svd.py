@@ -47,12 +47,23 @@ class BaseSVDLayer(nn.Module):
         """Define the parameter initialization specific to SVD Linear."""
         self.vera_lambda_b = nn.Parameter(torch.zeros(self.out_features), requires_grad=True)
 
+        # U, S , Vt = torch.linalg.svd(weight, full_matrices=False)
+        # self.vera_B = nn.Parameter(U[:, :r], requires_grad=False)
+        # self.vera_lambda_d = nn.Parameter(S[:r], requires_grad=True)
+        # self.vera_A = nn.Parameter(Vt[:r, :], requires_grad=False)
+        
         U, S , Vt = torch.linalg.svd(weight, full_matrices=False)
         self.vera_B = nn.Parameter(U[:, :r], requires_grad=False)
-        self.vera_lambda_d = nn.Parameter(S[:r], requires_grad=True)
+        self.vera_lambda_d = nn.Parameter(torch.randn(r), requires_grad=True)
         self.vera_A = nn.Parameter(Vt[:r, :], requires_grad=False)
 
-        # self.reset_vera_parameters(d_initial)
+        # U, S , Vt = torch.linalg.svd(weight, full_matrices=False)
+        # self.vera_B = nn.Parameter(U[:, :r], requires_grad=False)
+        # self.vera_lambda_d = nn.Parameter(torch.randn(r), requires_grad=True)
+        # A = torch.diag(S) @ Vt 
+        # self.vera_A = nn.Parameter(A[:r, :], requires_grad=False)
+
+        
         self._move_adapter_to_device_of_base_layer()
 
 class SVDLinear(nn.Linear, BaseSVDLayer):
@@ -72,6 +83,7 @@ class SVDLinear(nn.Linear, BaseSVDLayer):
     
 
     def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+        
         A, B = self.vera_A.to(x.device), self.vera_B.to(x.device)
         lambda_b, lambda_d = self.vera_lambda_b.to(x.device), self.vera_lambda_d.to(x.device)
         re = torch.diag(lambda_b) @ B @ torch.diag(lambda_d) @ A

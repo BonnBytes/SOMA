@@ -46,11 +46,10 @@ class BaseKaimingLayer(nn.Module):
         """Define the parameter initialization specific to Kaiming Linear."""
 
         self.vera_lambda_b = nn.Parameter(torch.zeros(self.out_features), requires_grad=True)
-        self.vera_lambda_d = nn.Parameter(torch.ones(r)* 0.1, requires_grad=True)
+        self.vera_lambda_d = nn.Parameter(torch.ones(r), requires_grad=True)
         self.vera_A = nn.Parameter(vera_A[:, : self.in_features], requires_grad=False)
         self.vera_B = nn.Parameter(vera_B[: self.out_features, :], requires_grad=False)
 
-        # self.reset_vera_parameters(d_initial)
         self._move_adapter_to_device_of_base_layer()
 
 class KaimingLinear(nn.Linear, BaseKaimingLayer):
@@ -75,5 +74,6 @@ class KaimingLinear(nn.Linear, BaseKaimingLayer):
         lambda_b, lambda_d = self.vera_lambda_b.to(x.device), self.vera_lambda_d.to(x.device)
         re = torch.diag(lambda_b) @ B @ torch.diag(lambda_d) @ A
         delta = x @ re
+
         return delta
 
