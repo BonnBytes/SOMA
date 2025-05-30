@@ -16,3 +16,11 @@ repos:
         args: ["--target-version", "py312"]
         files: ^(scripts/convergence/random_projection/|tests/test_randomprojection\.py)
         types: [python]
+
+      - id: pytest
+        name: pytest
+        entry: uv run pytest
+        language: system
+        files: ^tests/.*\.py$
+        pass_filenames: false
+        always_run: true
