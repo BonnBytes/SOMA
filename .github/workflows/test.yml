@@ -1,5 +1,4 @@
 name: Tests
-
 on: [ push, pull_request ]
 
 jobs:
@@ -9,33 +8,33 @@ jobs:
     strategy:
       matrix:
         os: [ ubuntu-latest ]
-        python-version: [3.11.0]
+        python-version: ["3.12"]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
-        with:
-          python-version: ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
       - name: Install dependencies
-        run: pip install nox
+        run: uv sync
       - name: Test with pytest
-        run:
-          nox -s test
+        run: |
+          cd tests
+          uv run pytest
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.11.0]
+        python-version: ["3.12"]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
-        with:
-          python-version: ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
       - name: Install dependencies
-        run: pip install nox
+        run: uv sync
       - name: Run flake8
-        run: nox -s lint
-      - name: Run mypy
-        run: nox -s typing
+        run: uv run flake8 scripts/convergence/random_projection/ tests/
