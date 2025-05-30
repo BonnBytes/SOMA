@@ -174,3 +174,4 @@ data/
 .python-version
 *.pth
 *.pt
+.vscode

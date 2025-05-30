@@ -1,0 +1,77 @@
+[project]
+name = "ortho-vera"
+version = "0.1.0"
+description = "Orthogonal VeRA initialisation lead to faster convergence."
+readme = "README.md"
+requires-python = "==3.12.10"
+dependencies = [
+    "matplotlib>=3.10.3",
+    "numpy==1.26.4",
+    "ptwt>=0.1.9",
+    "pytest>=8.3.5",
+    "scipy>=1.15.3",
+    "tqdm>=4.67.1",
+    "transformers>=4.52.4",
+]
+
+dev-dependencies = [
+    "black",
+    "isort", 
+    "pre-commit",
+]
+
+[project.optional-dependencies]
+cpu = [
+  "torch==2.6",
+  "torchvision==0.21",
+  "torchaudio==2.6",
+]
+cu124 = [
+  "torch==2.6",
+  "torchvision==0.21",
+  "torchaudio==2.6",
+]
+
+[tool.uv]
+conflicts = [
+  [
+    { extra = "cpu" },
+    { extra = "cu124" },
+  ],
+]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-cu124", extra = "cu124" },
+]
+torchvision = [
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-cu124", extra = "cu124" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+
+[tool.isort]
+profile = "black"
+py_version = 312
+
+[tool.black]
+line-length = 79
+target-version = ['py312']
+
+[dependency-groups]
+dev = [
+    "black>=25.1.0",
+    "isort>=6.0.1",
+    "pre-commit>=4.2.0",
+]

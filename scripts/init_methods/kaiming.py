@@ -1,8 +1,7 @@
 import warnings
+
 import torch
 import torch.nn as nn
-
-
 
 
 class BaseKaimingLayer(nn.Module):
@@ -15,9 +14,10 @@ class BaseKaimingLayer(nn.Module):
         self.vera_A = None
         self.vera_B = None
         self.base_layer = base_layer
-        self.in_features, self.out_features = self._get_layer_dimensions(base_layer)
+        self.in_features, self.out_features = self._get_layer_dimensions(
+            base_layer
+        )
         self.kwargs = kwargs
-
 
     def get_base_layer(self):
         return self.base_layer
@@ -36,44 +36,47 @@ class BaseKaimingLayer(nn.Module):
         device = self.base_layer.weight.device
         self.vera_lambda_b = self.vera_lambda_b.to(device)
         self.vera_lambda_d = self.vera_lambda_d.to(device)
-        
-    def update_layer(self,
-        vera_A,
-        vera_B,
-        r,
-        d_initial: float = 0.1
-        ):
+
+    def update_layer(self, vera_A, vera_B, r, d_initial: float = 0.1):
         """Define the parameter initialization specific to Kaiming Linear."""
 
-        self.vera_lambda_b = nn.Parameter(torch.zeros(self.out_features), requires_grad=True)
+        self.vera_lambda_b = nn.Parameter(
+            torch.zeros(self.out_features), requires_grad=True
+        )
         self.vera_lambda_d = nn.Parameter(torch.ones(r), requires_grad=True)
-        self.vera_A = nn.Parameter(vera_A[:, : self.in_features], requires_grad=False)
-        self.vera_B = nn.Parameter(vera_B[: self.out_features, :], requires_grad=False)
+        self.vera_A = nn.Parameter(
+            vera_A[:, : self.in_features], requires_grad=False
+        )
+        self.vera_B = nn.Parameter(
+            vera_B[: self.out_features, :], requires_grad=False
+        )
 
         self._move_adapter_to_device_of_base_layer()
 
+
 class KaimingLinear(nn.Linear, BaseKaimingLayer):
     """SVD-based VeRA Linear layer."""
+
     def __init__(
         self,
         base_layer,
         weight,
         vera_A,
-        vera_B,     
+        vera_B,
         r: int = 0,
         **kwargs,
     ):
         BaseKaimingLayer.__init__(self, base_layer, **kwargs)
         self.update_layer(vera_A, vera_B, r)
         self.weight = weight
-    
 
     def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
-        A= self.vera_A.to(x.device)
+        A = self.vera_A.to(x.device)
         B = self.vera_B.to(x.device)
-        lambda_b, lambda_d = self.vera_lambda_b.to(x.device), self.vera_lambda_d.to(x.device)
+        lambda_b, lambda_d = self.vera_lambda_b.to(
+            x.device
+        ), self.vera_lambda_d.to(x.device)
         re = torch.diag(lambda_b) @ B @ torch.diag(lambda_d) @ A
         delta = x @ re
 
         return delta
-

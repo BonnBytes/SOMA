@@ -1,41 +1,43 @@
+import math
+import random
+from collections import defaultdict
+
+import gdown
+import h5py
+import matplotlib.pyplot as plt
+import numpy as np
+import ptwt
+import pywt
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torchvision import datasets, transforms
-from timm import create_model
-from layers.merged import BaseMergedLinear as BaseMerged
-from torch.nn.init import _calculate_correct_fan
-import math
-from tqdm import tqdm
-import numpy as np
-import random
-import matplotlib.pyplot as plt
-from res_dataloader import RESISC45Dataset
-from pcam_dataloader import PCAMDataset
-import pywt
-import ptwt
-import gdown
-import h5py
-from collections import defaultdict
 from avalanche.evaluation.metrics.accuracy import Accuracy
+from layers.merged import BaseMergedLinear as BaseMerged
+from pcam_dataloader import PCAMDataset
+from res_dataloader import RESISC45Dataset
+from timm import create_model
 from timm.scheduler import CosineLRScheduler
+from torch.nn.init import _calculate_correct_fan
+from torchvision import datasets, transforms
+from tqdm import tqdm
+
 
 class VeraTrainer:
     def __init__(self, dataset="Cifar100", seed=1, device="cuda"):
         self.dataset_classes = {
-            "Cifar100": 100, 
-            "Food101": 101, 
+            "Cifar100": 100,
+            "Food101": 101,
             "RESISC45": 45,
             "Flowers102": 102,
             "PCAM": 2,
-            "CelebA": 2
+            "CelebA": 2,
         }
         self.dataset = dataset
         self.num_classes = self.dataset_classes.get(dataset, 0)
         self.seed = seed
         self.device = device
         self._set_seeds()
-        
+
     def _set_seeds(self):
         np.random.seed(self.seed)
         random.seed(self.seed)
@@ -46,7 +48,9 @@ class VeraTrainer:
 
     # -------------------- Initialization Helpers --------------------
     @staticmethod
-    def _kaiming_init(shape: tuple[int, ...], generator: torch.Generator) -> torch.Tensor:
+    def _kaiming_init(
+        shape: tuple[int, ...], generator: torch.Generator
+    ) -> torch.Tensor:
         fan = _calculate_correct_fan(torch.empty(shape), "fan_in")
         gain = math.sqrt(2)
         std = gain / math.sqrt(fan)
@@ -56,25 +60,33 @@ class VeraTrainer:
     @staticmethod
     def fourier_matrix(n: int) -> torch.Tensor:
         indices = torch.arange(n, dtype=torch.float64)
-        real_part = torch.cos(-2 * torch.pi * torch.outer(indices, indices) / n)
-        imag_part = torch.sin(-2 * torch.pi * torch.outer(indices, indices) / n)
+        real_part = torch.cos(
+            -2 * torch.pi * torch.outer(indices, indices) / n
+        )
+        imag_part = torch.sin(
+            -2 * torch.pi * torch.outer(indices, indices) / n
+        )
         return torch.complex(real_part, imag_part)
 
     # -------------------- Model Creation --------------------
 
     def create_model(self, pre_trained_check_path):
-        model = create_model("vit_base_patch16_224.augreg_in21k", checkpoint_path= "/home/s33zganj/VERA1/checkpoints/imagenet21k_ViT-B_16.npz", drop_path_rate=0.1)
+        model = create_model(
+            "vit_base_patch16_224.augreg_in21k",
+            checkpoint_path="/home/s33zganj/VERA1/checkpoints/imagenet21k_ViT-B_16.npz",
+            drop_path_rate=0.1,
+        )
         torch.save(model.state_dict(), pre_trained_check_path)
         # Modify model head and set requires_grad to True for the head parameters
         model.head = torch.nn.Linear(model.head.in_features, self.num_classes)
-        #model.head = nn.Sequential(
-        #nn.Dropout(0.2),
-        #nn.Linear(model.head.in_features, self.num_classes)
-        #)
-        
+        # model.head = nn.Sequential(
+        # nn.Dropout(0.2),
+        # nn.Linear(model.head.in_features, self.num_classes)
+        # )
+
         self._param_numbers(model)
         out_dim, in_dim = self._find_dim(model)
-        
+
         return model, in_dim, out_dim
 
     # -------------------- Model Modification --------------------
@@ -89,63 +101,92 @@ class VeraTrainer:
             else:
                 param.requires_grad = False
 
-        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        trainable_params = sum(
+            p.numel() for p in model.parameters() if p.requires_grad
+        )
         trainable_params = round(trainable_params / 1000000, 4)
         print(f"Trainable #Parameters: {trainable_params}M")
-        
+
         for param in model.head.parameters():
             param.requires_grad = True
 
-
         return model
 
-    def _modify_qkv_layers(self, model, linear_out_dim, linear_in_dim,
-                         scale, rank, method, matrix_A=None, matrix_B=None):
+    def _modify_qkv_layers(
+        self,
+        model,
+        linear_out_dim,
+        linear_in_dim,
+        scale,
+        rank,
+        method,
+        matrix_A=None,
+        matrix_B=None,
+    ):
         qkv_layers = []
         for name, _ in model.named_modules():
             if "qkv" in name:
                 qkv_layers.append(name.split("."))
 
         for idx, (*parent, k, _, _) in enumerate(qkv_layers):
-            nm = '.'.join(qkv_layers[idx])
+            nm = ".".join(qkv_layers[idx])
             mod = model.get_submodule(nm)
             b = mod.bias is not None
-            
+
             new_mod = BaseMerged(
-                base_layer=model.get_submodule(".".join(parent))[int(k)].attn.qkv,
+                base_layer=model.get_submodule(".".join(parent))[
+                    int(k)
+                ].attn.qkv,
                 weight=mod.weight.data,
                 vera_A=matrix_A,
                 vera_B=matrix_B,
-                method = method,
+                method=method,
                 r=rank,
-                scale=scale
-
+                scale=scale,
             )
             # new_mod.weight = mod.weight
             # new_mod.bias = mod.bias if b else None
-            model.get_submodule(".".join(parent))[int(k)].attn.qkv= new_mod
+            model.get_submodule(".".join(parent))[int(k)].attn.qkv = new_mod
             # model.get_submodule(".".join(parent))[int(k)].attn.qkv.base_layer.weight = mod.weight
             # model.get_submodule(".".join(parent))[int(k)].attn.qkv.base_layer.bias = mod.bias
-          
+
         return model
 
-    def apply_vera_to_attention(self, model, linear_out_dim, linear_in_dim, scale, rank):
+    def apply_vera_to_attention(
+        self, model, linear_out_dim, linear_in_dim, scale, rank
+    ):
         generator = torch.Generator(device="cpu").manual_seed(0)
         vera_A = self._kaiming_init((rank, linear_in_dim), generator)
         vera_B = self._kaiming_init((linear_out_dim, rank), generator)
 
-       
-        return self._modify_qkv_layers(model, linear_out_dim, linear_in_dim,
-                                     scale, rank, 'kaiming', vera_A, vera_B)
+        return self._modify_qkv_layers(
+            model,
+            linear_out_dim,
+            linear_in_dim,
+            scale,
+            rank,
+            "kaiming",
+            vera_A,
+            vera_B,
+        )
 
-    def apply_vera_to_attention_SVD(self, model, linear_out_dim, linear_in_dim, scale, rank):
-        return self._modify_qkv_layers(model, linear_out_dim, linear_in_dim,
-                                      scale, rank, 'svd')
+    def apply_vera_to_attention_SVD(
+        self, model, linear_out_dim, linear_in_dim, scale, rank
+    ):
+        return self._modify_qkv_layers(
+            model, linear_out_dim, linear_in_dim, scale, rank, "svd"
+        )
 
-    def apply_vera_to_attention_Wavelet(self, model, linear_out_dim, linear_in_dim, scale, rank):
-        matrix_A = ptwt.matmul_transform.construct_boundary_a("Haar", length=768, device="cpu").to_dense()
-        matrix_B = ptwt.matmul_transform.construct_boundary_s("Haar", length=768, device="cpu").to_dense()
-        
+    def apply_vera_to_attention_Wavelet(
+        self, model, linear_out_dim, linear_in_dim, scale, rank
+    ):
+        matrix_A = ptwt.matmul_transform.construct_boundary_a(
+            "Haar", length=768, device="cpu"
+        ).to_dense()
+        matrix_B = ptwt.matmul_transform.construct_boundary_s(
+            "Haar", length=768, device="cpu"
+        ).to_dense()
+
         # matrix_A[768//2:, :] = 0.0
 
         # # Get 1D Haar wavelet filters
@@ -167,30 +208,48 @@ class VeraTrainer:
         # matrix_A = torch.tensor(matrix_A, dtype=torch.float64)
         # matrix_B = torch.tensor(matrix_B, dtype=torch.float64)
 
-        return self._modify_qkv_layers(model, linear_out_dim, linear_in_dim,
-                                      scale, rank, 'wavelet', matrix_A, matrix_B)
+        return self._modify_qkv_layers(
+            model,
+            linear_out_dim,
+            linear_in_dim,
+            scale,
+            rank,
+            "wavelet",
+            matrix_A,
+            matrix_B,
+        )
 
-    def apply_vera_to_attention_Fourier(self, model, linear_out_dim, linear_in_dim, scale, rank):
+    def apply_vera_to_attention_Fourier(
+        self, model, linear_out_dim, linear_in_dim, scale, rank
+    ):
         matrix_A = self.fourier_matrix(768)
         matrix_B = torch.conj(matrix_A.T) / 768
 
         # matrix_A_copy = matrix_A.clone()
         # matrix_A_copy[768 // 2:, :] = 0.0
-        return self._modify_qkv_layers(model, linear_out_dim, linear_in_dim,
-                                      scale, rank, 'fourier', matrix_A, matrix_B)
-   
-    
+        return self._modify_qkv_layers(
+            model,
+            linear_out_dim,
+            linear_in_dim,
+            scale,
+            rank,
+            "fourier",
+            matrix_A,
+            matrix_B,
+        )
 
     # -------------------- Training Core --------------------
-    def train_and_evaluate(self, model, dataset_type, num_epochs=10, warmup_ratio=0.01):
+    def train_and_evaluate(
+        self, model, dataset_type, num_epochs=10, warmup_ratio=0.01
+    ):
         # 0.005
         model.reset_classifier(self.num_classes)
         train_loader, test_loader = self._get_data_loaders(dataset_type)
-        
+
         optimizer = self._get_optimizer(model, dataset_type)
         total_iters = num_epochs * len(train_loader)
 
-        dataset_size = len(train_loader.dataset) 
+        dataset_size = len(train_loader.dataset)
         batch_size = train_loader.batch_size
         total_training_steps = num_epochs * (dataset_size // batch_size)
         # Warmup scheduler: gradually increase LR for first `warmup_steps`
@@ -198,21 +257,35 @@ class VeraTrainer:
         # warmup_steps = 100
         # Warmup scheduler: gradually increase LR for first `warmup_steps`
         warmup_scheduler = torch.optim.lr_scheduler.LambdaLR(
-            optimizer, lr_lambda=lambda step: step / warmup_steps if step < warmup_steps else 1.0
+            optimizer,
+            lr_lambda=lambda step: (
+                step / warmup_steps if step < warmup_steps else 1.0
+            ),
         )
 
         scheduler = torch.optim.lr_scheduler.LinearLR(
-            optimizer, start_factor=1.0, end_factor=0.01, total_iters=total_iters - warmup_steps
+            optimizer,
+            start_factor=1.0,
+            end_factor=0.01,
+            total_iters=total_iters - warmup_steps,
         )
-        
-        
+
         # scheduler = CosineLRScheduler(optimizer, t_initial=100, warmup_t=10, lr_min=1e-5, warmup_lr_init=1e-6)
-        #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        #optimizer, T_max=total_training_steps - warmup_steps, eta_min=1e-6
-        #)
-        #scheduler = CosineLRScheduler(optimizer, t_initial=10, warmup_t=3, warmup_lr_init=1e-6)
+        # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        # optimizer, T_max=total_training_steps - warmup_steps, eta_min=1e-6
+        # )
+        # scheduler = CosineLRScheduler(optimizer, t_initial=10, warmup_t=3, warmup_lr_init=1e-6)
         # scheduler = None
-        model, loss = self._train_model(model, train_loader, test_loader, optimizer, warmup_scheduler, scheduler, num_epochs, warmup_steps)
+        model, loss = self._train_model(
+            model,
+            train_loader,
+            test_loader,
+            optimizer,
+            warmup_scheduler,
+            scheduler,
+            num_epochs,
+            warmup_steps,
+        )
         facc = self.test(model, test_loader)
         return model, optimizer, facc, loss
 
@@ -220,7 +293,7 @@ class VeraTrainer:
     def _create_10_per_class_subset(self, dataset):
         """Creates a subset with 10 samples per class from the given dataset."""
         # Extract targets if available
-        if hasattr(dataset, 'targets'):
+        if hasattr(dataset, "targets"):
             targets = dataset.targets
         else:
             # Extract labels manually if 'targets' attribute is missing
@@ -269,98 +342,178 @@ class VeraTrainer:
 
     def _get_data_loaders(self, dataset_type):
         transform, test_transform = self._get_transforms(dataset_type)
-        
-        if dataset_type == 'Cifar100':
-            original_train = datasets.CIFAR100(root="./data", train=True, download=True, transform=transform)
+
+        if dataset_type == "Cifar100":
+            original_train = datasets.CIFAR100(
+                root="./data", train=True, download=True, transform=transform
+            )
             train_dataset = self._create_10_per_class_subset(original_train)
-            test_dataset = datasets.CIFAR100(root="./data", train=False, download=True, transform=test_transform)
-        elif dataset_type == 'Food101':
-            original_train = datasets.Food101(root="./data", split="train", download=True, transform=transform)
+            test_dataset = datasets.CIFAR100(
+                root="./data",
+                train=False,
+                download=True,
+                transform=test_transform,
+            )
+        elif dataset_type == "Food101":
+            original_train = datasets.Food101(
+                root="./data",
+                split="train",
+                download=True,
+                transform=transform,
+            )
             train_dataset = self._create_10_per_class_subset(original_train)
-            test_dataset = datasets.Food101(root="./data", split="test", download=True, transform=test_transform)
-        elif dataset_type == 'RESISC45':
-            full_dataset = RESISC45Dataset(root_dir='/home/s33zganj/VERA1/data/NWPU-RESISC45', transform=None)
+            test_dataset = datasets.Food101(
+                root="./data",
+                split="test",
+                download=True,
+                transform=test_transform,
+            )
+        elif dataset_type == "RESISC45":
+            full_dataset = RESISC45Dataset(
+                root_dir="/home/s33zganj/VERA1/data/NWPU-RESISC45",
+                transform=None,
+            )
             train_indices, test_indices = self._split_resisc45(full_dataset)
 
             train_dataset = torch.utils.data.Subset(
-                RESISC45Dataset(root_dir='/home/s33zganj/VERA1/data/NWPU-RESISC45', transform=transform), 
-                train_indices
+                RESISC45Dataset(
+                    root_dir="/home/s33zganj/VERA1/data/NWPU-RESISC45",
+                    transform=transform,
+                ),
+                train_indices,
             )
             test_dataset = torch.utils.data.Subset(
-                RESISC45Dataset(root_dir='/home/s33zganj/VERA1/data/NWPU-RESISC45', transform=test_transform), 
-                test_indices
+                RESISC45Dataset(
+                    root_dir="/home/s33zganj/VERA1/data/NWPU-RESISC45",
+                    transform=test_transform,
+                ),
+                test_indices,
             )
-        elif dataset_type == 'Flowers102':
-            original_train = datasets.Flowers102(root="./data", split="train", download=True, transform=transform)
+        elif dataset_type == "Flowers102":
+            original_train = datasets.Flowers102(
+                root="./data",
+                split="train",
+                download=True,
+                transform=transform,
+            )
             train_dataset = self._create_10_per_class_subset(original_train)
-            test_dataset = datasets.Flowers102(root="./data", split="test", download=True, transform=test_transform)
+            test_dataset = datasets.Flowers102(
+                root="./data",
+                split="test",
+                download=True,
+                transform=test_transform,
+            )
 
-        elif dataset_type == 'PCAM':
+        elif dataset_type == "PCAM":
             try:
-                y_train = np.array(h5py.File('/home/s33zganj/VERA1/scripts/data/pcam/camelyonpatch_level_2_split_train_y.h5', 'r')['y'])
-                x_train = np.array(h5py.File('/home/s33zganj/VERA1/scripts/data/pcam/camelyonpatch_level_2_split_train_x.h5', 'r')['x'])
-                y_test = np.array(h5py.File('/home/s33zganj/VERA1/scripts/data/pcam/camelyonpatch_level_2_split_test_y.h5', 'r')['y'])
-                x_test = np.array(h5py.File('/home/s33zganj/VERA1/scripts/data/pcam/camelyonpatch_level_2_split_test_x.h5', 'r')['x'])
+                y_train = np.array(
+                    h5py.File(
+                        "/home/s33zganj/VERA1/scripts/data/pcam/camelyonpatch_level_2_split_train_y.h5",
+                        "r",
+                    )["y"]
+                )
+                x_train = np.array(
+                    h5py.File(
+                        "/home/s33zganj/VERA1/scripts/data/pcam/camelyonpatch_level_2_split_train_x.h5",
+                        "r",
+                    )["x"]
+                )
+                y_test = np.array(
+                    h5py.File(
+                        "/home/s33zganj/VERA1/scripts/data/pcam/camelyonpatch_level_2_split_test_y.h5",
+                        "r",
+                    )["y"]
+                )
+                x_test = np.array(
+                    h5py.File(
+                        "/home/s33zganj/VERA1/scripts/data/pcam/camelyonpatch_level_2_split_test_x.h5",
+                        "r",
+                    )["x"]
+                )
             except OSError:
-                raise NotImplementedError("Error while loading the dataset, make sure files are available.")
+                raise NotImplementedError(
+                    "Error while loading the dataset, make sure files are available."
+                )
 
             train_dataset = PCAMDataset(x_train, y_train, transform=transform)
             test_dataset = PCAMDataset(x_test, y_test, transform=transform)
 
-        elif dataset_type == 'CelebA':
+        elif dataset_type == "CelebA":
             get_smile = lambda attr: attr[31]
-            train_dataset = datasets.CelebA(root="/home/s33zganj/VERA1/scripts/data", split="train", target_type="attr", target_transform=get_smile, download=False, transform=transform)
-            test_dataset = datasets.CelebA(root="/home/s33zganj/VERA1/scripts/data", split="test", target_type="attr", target_transform=get_smile, download=False, transform=transform)
+            train_dataset = datasets.CelebA(
+                root="/home/s33zganj/VERA1/scripts/data",
+                split="train",
+                target_type="attr",
+                target_transform=get_smile,
+                download=False,
+                transform=transform,
+            )
+            test_dataset = datasets.CelebA(
+                root="/home/s33zganj/VERA1/scripts/data",
+                split="test",
+                target_type="attr",
+                target_transform=get_smile,
+                download=False,
+                transform=transform,
+            )
 
-        
         train_loader = self._create_loader(train_dataset, drop=True)
         test_loader = self._create_loader(test_dataset, shuffle=False)
         return train_loader, test_loader
 
     def _get_transforms(self, dataset_type):
-        #transform = transforms.Compose([
-        #transforms.RandomResizedCrop(224, scale=(0.7, 1.0)),
-        #transforms.RandomHorizontalFlip(p=0.5),
-        #transforms.ColorJitter(brightness=0.1, contrast=0.1),
-        #transforms.ToTensor(),
-        #transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        #])
+        # transform = transforms.Compose([
+        # transforms.RandomResizedCrop(224, scale=(0.7, 1.0)),
+        # transforms.RandomHorizontalFlip(p=0.5),
+        # transforms.ColorJitter(brightness=0.1, contrast=0.1),
+        # transforms.ToTensor(),
+        # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        # ])
 
-        
-        #test_transform = transforms.Compose([
+        # test_transform = transforms.Compose([
         #        transforms.Resize((224, 224), interpolation=3),
         #        transforms.ToTensor(),
         #        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        #])
+        # ])
 
-        transform = transforms.Compose([
-        transforms.RandomResizedCrop(224, interpolation=3),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
-        ])
+        transform = transforms.Compose(
+            [
+                transforms.RandomResizedCrop(224, interpolation=3),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]
+                ),
+            ]
+        )
 
-        test_transform = transforms.Compose([
+        test_transform = transforms.Compose(
+            [
                 transforms.Resize(256, interpolation=3),
                 transforms.CenterCrop(224),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
-        ])
+                transforms.Normalize(
+                    mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]
+                ),
+            ]
+        )
 
         return transform, test_transform
-    
+
         # return transforms.Compose([
         #         transforms.Resize((224, 224), interpolation=3),
         #         transforms.ToTensor(),
         #         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         # ])
 
-
     def _create_loader(self, dataset, shuffle=True, drop=False):
         return torch.utils.data.DataLoader(
-            dataset, batch_size=64, shuffle=shuffle,
+            dataset,
+            batch_size=64,
+            shuffle=shuffle,
             drop_last=drop,
-            num_workers=4, pin_memory=True
+            num_workers=4,
+            pin_memory=True,
         )
 
     def _get_optimizer(self, model, dataset):
@@ -372,22 +525,46 @@ class VeraTrainer:
         # for n in model.head.parameters():
         #     print(f"head: {n}")
 
-        #add pcam, celebA and dndd
-        Head_lr_dic = {'Cifar100':4e-3, 'Food101': 4e-2, 'RESISC45': 5e-3, 'Flowers102': 4e-3, 'PCAM': 4e-3, 'CelebA': 4e-3}
-        lr_dic = {'Cifar100':2e-2, 'Food101': 4e-2, 'RESISC45': 7e-2, 'Flowers102': 4e-2, 'PCAM': 4e-3, 'CelebA': 4e-3}
+        # add pcam, celebA and dndd
+        Head_lr_dic = {
+            "Cifar100": 4e-3,
+            "Food101": 4e-2,
+            "RESISC45": 5e-3,
+            "Flowers102": 4e-3,
+            "PCAM": 4e-3,
+            "CelebA": 4e-3,
+        }
+        lr_dic = {
+            "Cifar100": 2e-2,
+            "Food101": 4e-2,
+            "RESISC45": 7e-2,
+            "Flowers102": 4e-2,
+            "PCAM": 4e-3,
+            "CelebA": 4e-3,
+        }
         print(lr_dic[dataset])
         print(Head_lr_dic[dataset])
         trainable = []
         for n, p in model.named_parameters():
             if p.requires_grad:
                 trainable.append(p)
-            
+
         return torch.optim.AdamW(
             [
-                {"params": model.head.parameters(), "lr": Head_lr_dic[dataset]},
-                {"params": (p for n, p in model.named_parameters() if "vera_lambda" in n and p.requires_grad)}
+                {
+                    "params": model.head.parameters(),
+                    "lr": Head_lr_dic[dataset],
+                },
+                {
+                    "params": (
+                        p
+                        for n, p in model.named_parameters()
+                        if "vera_lambda" in n and p.requires_grad
+                    )
+                },
             ],
-            lr=lr_dic[dataset], weight_decay=0.01
+            lr=lr_dic[dataset],
+            weight_decay=0.01,
         )
 
     def _find_dim(self, model) -> tuple[int, int]:
@@ -400,7 +577,9 @@ class VeraTrainer:
             if largest_shape is None:
                 largest_shape = module_shape
             else:
-                largest_shape = tuple(max(a, b) for a, b in zip(largest_shape, module_shape))
+                largest_shape = tuple(
+                    max(a, b) for a, b in zip(largest_shape, module_shape)
+                )
         if largest_shape is None:
             raise ValueError("No compatible layers found for Vera.")
         return largest_shape
@@ -408,18 +587,19 @@ class VeraTrainer:
     @staticmethod
     def _save_checkpoint(checkpoint_path, model, optimizer, facc, loss):
         # Saving model's checkpoint
-        torch.save({
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'epoch': 10,
-            'accuracy': facc,
-            'loss':loss
-
-        }, checkpoint_path)
+        torch.save(
+            {
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "epoch": 10,
+                "accuracy": facc,
+                "loss": loss,
+            },
+            checkpoint_path,
+        )
         print(f"Saved checkpoint to {checkpoint_path}")
 
-
-    def _get_all_eigenvalues(self, scale, checkpoint_path, is_pretrained = True):
+    def _get_all_eigenvalues(self, scale, checkpoint_path, is_pretrained=True):
 
         model_state_dict = None
         if is_pretrained == True:
@@ -429,113 +609,149 @@ class VeraTrainer:
         else:
             # Load checkpoint and model state dict
             checkpoint = torch.load(checkpoint_path)
-            model_state_dict = checkpoint['model_state_dict']
+            model_state_dict = checkpoint["model_state_dict"]
 
         # Move tensors to the same device
         device = "cuda" if torch.cuda.is_available() else "cpu"
-
 
         eigenvalues = []
         weights = []
         qkv_weight = None
 
         for block_idx in range(12):
-            attn_key = f'blocks.{block_idx}.attn.qkv'
+            attn_key = f"blocks.{block_idx}.attn.qkv"
 
             if is_pretrained == True:
-                qkv_weight = model_state_dict[attn_key+ '.weight'].to(device)
+                qkv_weight = model_state_dict[attn_key + ".weight"].to(device)
 
             elif is_pretrained == False:
-                        
-                if attn_key + '.weight' not in model_state_dict:
-                    print(f'layer {attn_key}.weight doesnt exists')
+
+                if attn_key + ".weight" not in model_state_dict:
+                    print(f"layer {attn_key}.weight doesnt exists")
                     continue
-                
-                # Get qkv weights       
+
+                # Get qkv weights
                 q_weight = None
                 k_weight = None
                 v_weight = None
-                
+
                 for name in ["q_proj", "v_proj"]:
-                    base_weight_key = attn_key + f'.{name}.base_layer.weight'
-                    
+                    base_weight_key = attn_key + f".{name}.base_layer.weight"
+
                     if base_weight_key not in model_state_dict:
-                        print(f'layer {base_weight_key} doesnt exists')
+                        print(f"layer {base_weight_key} doesnt exists")
                         continue
                     base_weight = model_state_dict[base_weight_key].to(device)
 
-                    lambda_b = model_state_dict[attn_key + f'.{name}.vera_lambda_b'].to(device)
-                    vera_B = model_state_dict[attn_key + f'.{name}.vera_B'].to(device)
-                    lambda_d = model_state_dict[attn_key + f'.{name}.vera_lambda_d'].to(device) 
-                    vera_A = model_state_dict[attn_key + f'.{name}.vera_A'].to(device)
+                    lambda_b = model_state_dict[
+                        attn_key + f".{name}.vera_lambda_b"
+                    ].to(device)
+                    vera_B = model_state_dict[attn_key + f".{name}.vera_B"].to(
+                        device
+                    )
+                    lambda_d = model_state_dict[
+                        attn_key + f".{name}.vera_lambda_d"
+                    ].to(device)
+                    vera_A = model_state_dict[attn_key + f".{name}.vera_A"].to(
+                        device
+                    )
 
-                    fixed_lambda_d_key = attn_key + f'.{name}.fixed_lambda_d'
-                    if fixed_lambda_d_key in model_state_dict:                        
-                        fixed_lambda_d = model_state_dict[attn_key + f'.{name}.fixed_lambda_d'].to(device)
+                    fixed_lambda_d_key = attn_key + f".{name}.fixed_lambda_d"
+                    if fixed_lambda_d_key in model_state_dict:
+                        fixed_lambda_d = model_state_dict[
+                            attn_key + f".{name}.fixed_lambda_d"
+                        ].to(device)
                         lambda_d = torch.cat([lambda_d, fixed_lambda_d], dim=0)
 
                     # Compute adaptation: Λ_b * B * Λ_d * A
                     scaled_B = vera_B * lambda_b.unsqueeze(1)  # Row scaling
-                    scaled_B = scaled_B * lambda_d.unsqueeze(0)  # Column scaling
+                    scaled_B = scaled_B * lambda_d.unsqueeze(
+                        0
+                    )  # Column scaling
                     adaptation = scaled_B @ vera_A  # [768, 768]
-                    
+
                     # Merge with base weights
                     if name == "q_proj":
                         q_weight = adaptation
-                        k_weight = torch.zeros_like(q_weight, device=device)  
+                        k_weight = torch.zeros_like(q_weight, device=device)
                     elif name == "v_proj":
-                        v_weight =adaptation
+                        v_weight = adaptation
 
-                qkv_delta_weight = torch.cat((q_weight, k_weight, v_weight), dim=0)
-                qkv_weight = model_state_dict[attn_key + '.base_layer.weight'].to(device) + scale * qkv_delta_weight
-            
+                qkv_delta_weight = torch.cat(
+                    (q_weight, k_weight, v_weight), dim=0
+                )
+                qkv_weight = (
+                    model_state_dict[attn_key + ".base_layer.weight"].to(
+                        device
+                    )
+                    + scale * qkv_delta_weight
+                )
+
             qkv_weight = qkv_weight.cpu().detach().numpy()
             weights.append(qkv_weight)
             singular_vals = np.linalg.svd(qkv_weight, compute_uv=False)
             eigenvalues.append(singular_vals)
 
-        return np.concatenate(eigenvalues),  np.concatenate(weights)
+        return np.concatenate(eigenvalues), np.concatenate(weights)
 
-    
     def _get_condition_rate(self, checkpoint_path):
 
         model_state_dict = None
-        
+
         # Load checkpoint and model state dict
         checkpoint = torch.load(checkpoint_path)
-        model_state_dict = checkpoint['model_state_dict']
+        model_state_dict = checkpoint["model_state_dict"]
 
         # Move tensors to the same device
         device = "cuda" if torch.cuda.is_available() else "cpu"
-
 
         eigenvalues = []
         weights = []
         qkv_weight = None
 
         for block_idx in range(12):
-            attn_key = f'blocks.{block_idx}.attn.qkv'
+            attn_key = f"blocks.{block_idx}.attn.qkv"
 
-            if attn_key + '.weight' not in model_state_dict:
-                print(f'layer {attn_key}.weight doesnt exists')
+            if attn_key + ".weight" not in model_state_dict:
+                print(f"layer {attn_key}.weight doesnt exists")
                 continue
-            
-            # Get qkv weights       
+
+            # Get qkv weights
             q_weight = None
             k_weight = None
             v_weight = None
-            
-            for name in ["q_proj"]:
-                
-                lambda_b = model_state_dict[attn_key + f'.{name}.vera_lambda_b'].to(device).to(dtype=torch.float32)
-                vera_B = model_state_dict[attn_key + f'.{name}.vera_B'].to(device).to(dtype=torch.float32)
-                lambda_d = model_state_dict[attn_key + f'.{name}.vera_lambda_d'].to(device).to(dtype=torch.float32)
-                vera_A = model_state_dict[attn_key + f'.{name}.vera_A'].to(device).to(dtype=torch.float32)
 
-                fixed_lambda_d_key = attn_key + f'.{name}.fixed_lambda_d'
-                if fixed_lambda_d_key in model_state_dict:                        
-                    fixed_lambda_d = model_state_dict[attn_key + f'.{name}.fixed_lambda_d'].to(device)
-                    lambda_d = torch.cat([lambda_d, fixed_lambda_d], dim=0).to(dtype=torch.float32)
+            for name in ["q_proj"]:
+
+                lambda_b = (
+                    model_state_dict[attn_key + f".{name}.vera_lambda_b"]
+                    .to(device)
+                    .to(dtype=torch.float32)
+                )
+                vera_B = (
+                    model_state_dict[attn_key + f".{name}.vera_B"]
+                    .to(device)
+                    .to(dtype=torch.float32)
+                )
+                lambda_d = (
+                    model_state_dict[attn_key + f".{name}.vera_lambda_d"]
+                    .to(device)
+                    .to(dtype=torch.float32)
+                )
+                vera_A = (
+                    model_state_dict[attn_key + f".{name}.vera_A"]
+                    .to(device)
+                    .to(dtype=torch.float32)
+                )
+
+                fixed_lambda_d_key = attn_key + f".{name}.fixed_lambda_d"
+                if fixed_lambda_d_key in model_state_dict:
+                    fixed_lambda_d = model_state_dict[
+                        attn_key + f".{name}.fixed_lambda_d"
+                    ].to(device)
+                    lambda_d = torch.cat([lambda_d, fixed_lambda_d], dim=0).to(
+                        dtype=torch.float32
+                    )
 
                 C = torch.diag(lambda_d) @ vera_A
                 # print(C)
@@ -547,22 +763,24 @@ class VeraTrainer:
                 # cond_A = torch.linalg.cond(A_dense)
                 singular_values = torch.linalg.svdvals(C)
                 singular_values = singular_values[singular_values != 0]
-                
 
                 # Compute condition number
-                condition_number = singular_values.max() / singular_values.min()
+                condition_number = (
+                    singular_values.max() / singular_values.min()
+                )
                 print("Condition Number A:", condition_number.item())
 
                 C = torch.diag(lambda_b) @ vera_B
                 # Compute singular values
                 singular_values = torch.linalg.svdvals(C)
                 singular_values = singular_values[singular_values != 0]
-                
-                
+
                 # Compute condition number
-                condition_number = singular_values.max() / singular_values.min()
+                condition_number = (
+                    singular_values.max() / singular_values.min()
+                )
                 print("Condition Number B:", condition_number.item())
-                
+
                 # # Compute condition number
                 # epsilon = 1e-6  # Small value to avoid singularity
                 # A_dense = (torch.diag(lambda_d) @ vera_A)
@@ -570,25 +788,37 @@ class VeraTrainer:
 
                 # cond_A = torch.linalg.cond(A_dense)
 
-                # epsilon = 1e-6 
-                
+                # epsilon = 1e-6
+
                 # B_dense = (torch.diag(lambda_b) @ vera_B)
                 # B_dense += epsilon * torch.eye(B_dense.shape[0], device=B_dense.device, dtype=B_dense.dtype)
-
 
                 # cond_B = torch.linalg.cond(B_dense)
 
                 # print(f"Condition Number of A : {cond_A.item()}")
                 # print(f"Condition Number of B : {cond_B.item()}")
 
-
-
-
-    def eing_his(self, scale, checkpoint_path, pre_trained_eigenvalues, pre_trained_weights, his_path_eig, his_path_weight):
-        finetuned_eigenvalues, finetuned_weights = self._get_all_eigenvalues(scale, checkpoint_path, False)
-        self.plot_eigen_hist(pre_trained_eigenvalues, finetuned_eigenvalues, pre_trained_weights, finetuned_weights, his_path_eig, his_path_weight)
+    def eing_his(
+        self,
+        scale,
+        checkpoint_path,
+        pre_trained_eigenvalues,
+        pre_trained_weights,
+        his_path_eig,
+        his_path_weight,
+    ):
+        finetuned_eigenvalues, finetuned_weights = self._get_all_eigenvalues(
+            scale, checkpoint_path, False
+        )
+        self.plot_eigen_hist(
+            pre_trained_eigenvalues,
+            finetuned_eigenvalues,
+            pre_trained_weights,
+            finetuned_weights,
+            his_path_eig,
+            his_path_weight,
+        )
         return
-
 
     def _param_numbers(self, model):
         total_params = sum(p.numel() for p in model.parameters())
@@ -596,59 +826,69 @@ class VeraTrainer:
         print(f"Total #Parameters: {total_params}M")
         return
 
-
-
     # -------------------- Training/Evaluation --------------------
-    def _train_model(self, model, train_loader, test_loader, optimizer, warmup_scheduler, scheduler, num_epochs=10, warmup_steps=0):
+    def _train_model(
+        self,
+        model,
+        train_loader,
+        test_loader,
+        optimizer,
+        warmup_scheduler,
+        scheduler,
+        num_epochs=10,
+        warmup_steps=0,
+    ):
         model.to(self.device)
         model.train()
         loss_fn = nn.CrossEntropyLoss()
         epoch_losses = []
         epoch_acc = []
-        #label_smoothing=0.1
+        # label_smoothing=0.1
         for ep in (pbar := tqdm(range(num_epochs))):
             batch_losses = []
             batch_acc = []
-            
+
             correct, total = 0, 0
 
             for x, y in train_loader:
                 x, y = x.to(self.device), y.to(self.device)
                 out = model(x)
-                loss =loss_fn(out, y)
+                loss = loss_fn(out, y)
                 optimizer.zero_grad()
                 loss.backward()
                 # # Only update weights if learning rate is not too small
-                 #if optimizer.param_groups[0]['lr'] > 1e-6:
-                    # optimizer.step()
-                
+                # if optimizer.param_groups[0]['lr'] > 1e-6:
+                # optimizer.step()
+
                 optimizer.step()
                 preds = torch.argmax(out, dim=1)
                 correct += (preds == y).sum().item()
                 total += y.size(0)
-                
 
-                batch_losses.append(loss.item()) 
+                batch_losses.append(loss.item())
                 pbar.set_description(f"Loss: {loss.item():.4f}")
 
                 # Apply warmup scheduler only during warmup steps
-                
+
                 warmup_scheduler.step()
                 # After warmup ends, use the main scheduler
-                #if scheduler is not None
-                if scheduler is not None and warmup_scheduler.last_epoch >= warmup_steps:
+                # if scheduler is not None
+                if (
+                    scheduler is not None
+                    and warmup_scheduler.last_epoch >= warmup_steps
+                ):
                     scheduler.step()
 
             epoch_losses.append(np.mean(batch_losses))
 
-            #if scheduler is not None:
+            # if scheduler is not None:
             #     scheduler.step(ep)
-            
+
             print(f"Epoch {ep}: Train Accuracy={round(correct / total, 4)}")
 
             acc = self.test(model, test_loader)
             print(f"Epoch {ep}: Accuracy={acc:.4f}")
-        
+
         return model.cpu(), epoch_losses
 
     @torch.no_grad()
@@ -664,7 +904,11 @@ class VeraTrainer:
 
     # -------------------- Visualization --------------------
     @staticmethod
-    def plot_accuracy_comparison(acc_dict, title="Accuracy Comparison", save_path="accuracy_comparison.png"):
+    def plot_accuracy_comparison(
+        acc_dict,
+        title="Accuracy Comparison",
+        save_path="accuracy_comparison.png",
+    ):
         plt.figure(figsize=(10, 6))
         for label, acc in acc_dict.items():
             plt.plot(acc, label=label)
@@ -679,16 +923,16 @@ class VeraTrainer:
     def plot_conv_plot(dataset_name):
         checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/kaiming_vera_model_{dataset_name}.pth"
         checkpoint = torch.load(checkpoint_path)
-        kaiming_loss = checkpoint['loss']
+        kaiming_loss = checkpoint["loss"]
         checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/svd_vera_model_{dataset_name}.pth"
         checkpoint = torch.load(checkpoint_path)
-        svd_loss = checkpoint['loss']
+        svd_loss = checkpoint["loss"]
         checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/wavelet_vera_model_{dataset_name}.pth"
         checkpoint = torch.load(checkpoint_path)
-        wavelet_loss = checkpoint['loss']
+        wavelet_loss = checkpoint["loss"]
         checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/fourier_vera_model_{dataset_name}.pth"
         checkpoint = torch.load(checkpoint_path)
-        fourier_loss = checkpoint['loss']
+        fourier_loss = checkpoint["loss"]
 
         plt.plot(range(len(kaiming_loss)), kaiming_loss, label="kaiming Loss")
         plt.plot(range(len(kaiming_loss)), svd_loss, label="svd Loss")
@@ -700,10 +944,10 @@ class VeraTrainer:
         plt.legend()
         plt.show()
         plt.savefig("/home/s33zganj/VERA1/convergence_plot.png")
-    
+
     @staticmethod
     def plot_rank_accuracy(self):
-        # ranks = [2,4,8,16,32,64,128,256,512]  
+        # ranks = [2,4,8,16,32,64,128,256,512]
         # rank_accuracy = {
         #     'Kaiming': np.array([0.8135, 0.8148, 0.8259, 0.8225, 0.8263, 0.8309, 0.8348, 0.8424, 0.8448]),
         #     'svd': np.array([0.7856, 0.7941, 0.8007,  0.8056, 0.8157,  0.8189,  0.8248, 0.8395, 0.8374]),
@@ -711,55 +955,132 @@ class VeraTrainer:
         #     'Fourier': np.array([0.7925, 0.7979, 0.8091, 0.8108,  0.8126, 0.8186,  0.8248, 0.8334, 0.8375])
         # }
 
-        ranks = [2,4,8,16,32,64,128,256,512]  
+        ranks = [2, 4, 8, 16, 32, 64, 128, 256, 512]
         rank_accuracy = {
-            'Kaiming': np.array([0.7452, 0.7365, 0.7551, 0.7615, 0.7608,0.7578,0.7695,0.7720,0.7722]),
-            'svd': np.array([0.7277, 0.7330, 0.7506,  0.7524, 0.7552, 0.7592,0.7681,0.7686,0.7719]),
-            'Wavelet': np.array([0.6823, 0.6899, 0.6952, 0.7049, 0.7147,0.7334,0.7634,0.7709,0.7764]),
-            'Fourier': np.array([0.7094, 0.7318, 0.7335, 0.7385, 0.7588,0.7593,0.7598,0.7785,0.7770])
+            "Kaiming": np.array(
+                [
+                    0.7452,
+                    0.7365,
+                    0.7551,
+                    0.7615,
+                    0.7608,
+                    0.7578,
+                    0.7695,
+                    0.7720,
+                    0.7722,
+                ]
+            ),
+            "svd": np.array(
+                [
+                    0.7277,
+                    0.7330,
+                    0.7506,
+                    0.7524,
+                    0.7552,
+                    0.7592,
+                    0.7681,
+                    0.7686,
+                    0.7719,
+                ]
+            ),
+            "Wavelet": np.array(
+                [
+                    0.6823,
+                    0.6899,
+                    0.6952,
+                    0.7049,
+                    0.7147,
+                    0.7334,
+                    0.7634,
+                    0.7709,
+                    0.7764,
+                ]
+            ),
+            "Fourier": np.array(
+                [
+                    0.7094,
+                    0.7318,
+                    0.7335,
+                    0.7385,
+                    0.7588,
+                    0.7593,
+                    0.7598,
+                    0.7785,
+                    0.7770,
+                ]
+            ),
         }
-
 
         # Plot
         plt.figure(figsize=(8, 6))
         for approach, accuracy in rank_accuracy.items():
             plt.plot(ranks, accuracy, label=approach)
 
-        plt.xlabel('Ranks')
-        plt.ylabel('Accuracy')
-        plt.title('Rank Accuracy Plot')
+        plt.xlabel("Ranks")
+        plt.ylabel("Accuracy")
+        plt.title("Rank Accuracy Plot")
         plt.legend()
         plt.grid(True)
         plt.savefig("/home/s33zganj/VERA1/rank_acc.jpg")
         plt.show()
 
-    def plot_eigen_hist(self, pre_trained_eigenvalues, finetuned_eigenvalues, pre_trained_weights, finetuned_weights, save_path_eig ,save_path_weight, title="Eigenvalue Distribution"):
+    def plot_eigen_hist(
+        self,
+        pre_trained_eigenvalues,
+        finetuned_eigenvalues,
+        pre_trained_weights,
+        finetuned_weights,
+        save_path_eig,
+        save_path_weight,
+        title="Eigenvalue Distribution",
+    ):
         plt.figure(figsize=(10, 6))
 
         # Compute bin edges using a finer resolution
-        min_val = min(np.min(pre_trained_eigenvalues), np.min(finetuned_eigenvalues))
-        max_val = max(np.max(pre_trained_eigenvalues), np.max(finetuned_eigenvalues))
+        min_val = min(
+            np.min(pre_trained_eigenvalues), np.min(finetuned_eigenvalues)
+        )
+        max_val = max(
+            np.max(pre_trained_eigenvalues), np.max(finetuned_eigenvalues)
+        )
         num_bins = max(
             int(np.ceil(np.log2(len(pre_trained_eigenvalues)) + 1)),
-            int(np.ceil(np.log2(len(finetuned_eigenvalues)) + 1))
+            int(np.ceil(np.log2(len(finetuned_eigenvalues)) + 1)),
         )
 
         # Create finer bin edges
-        bins = np.linspace(min_val, max_val, num_bins * 5)  # Increase bin resolution
+        bins = np.linspace(
+            min_val, max_val, num_bins * 5
+        )  # Increase bin resolution
 
-        plt.hist(pre_trained_eigenvalues, bins=bins, alpha=0.3, label='Pretrained',
-                density=True, edgecolor='blue', linewidth=1.0)
+        plt.hist(
+            pre_trained_eigenvalues,
+            bins=bins,
+            alpha=0.3,
+            label="Pretrained",
+            density=True,
+            edgecolor="blue",
+            linewidth=1.0,
+        )
 
-        plt.hist(finetuned_eigenvalues, bins=bins, alpha=0.8, label='Finetuned',
-                density=True, edgecolor='red', linewidth=1.0)
+        plt.hist(
+            finetuned_eigenvalues,
+            bins=bins,
+            alpha=0.8,
+            label="Finetuned",
+            density=True,
+            edgecolor="red",
+            linewidth=1.0,
+        )
 
-
-        plt.xlabel('Eigenvalue Magnitude')
-        plt.ylabel('Frequency')
+        plt.xlabel("Eigenvalue Magnitude")
+        plt.ylabel("Frequency")
 
         plt.title(title)
         plt.legend()
-        plt.savefig(save_path_eig, dpi=300)  # Higher resolution for better clarity
+        plt.savefig(
+            save_path_eig, dpi=300
+        )  # Higher resolution for better clarity
         plt.close()
 
         plt.figure(figsize=(10, 6))
@@ -769,26 +1090,44 @@ class VeraTrainer:
         max_val = max(np.max(pre_trained_weights), np.max(finetuned_weights))
         num_bins = max(
             int(np.ceil(np.log2(len(pre_trained_weights)) + 1)),
-            int(np.ceil(np.log2(len(finetuned_weights)) + 1))
+            int(np.ceil(np.log2(len(finetuned_weights)) + 1)),
         )
 
         # Create finer bin edges
-        bins = np.linspace(min_val, max_val, num_bins * 5)  # Increase bin resolution
+        bins = np.linspace(
+            min_val, max_val, num_bins * 5
+        )  # Increase bin resolution
 
-        plt.hist(pre_trained_weights, bins=bins, alpha=0.3, label='Pretrained',
-                density=True, edgecolor='blue', linewidth=1.0)
+        plt.hist(
+            pre_trained_weights,
+            bins=bins,
+            alpha=0.3,
+            label="Pretrained",
+            density=True,
+            edgecolor="blue",
+            linewidth=1.0,
+        )
 
-        plt.hist(finetuned_weights, bins=bins, alpha=0.8, label='Finetuned',
-                density=True, edgecolor='red', linewidth=1.0)
+        plt.hist(
+            finetuned_weights,
+            bins=bins,
+            alpha=0.8,
+            label="Finetuned",
+            density=True,
+            edgecolor="red",
+            linewidth=1.0,
+        )
 
+        plt.xlabel("Weight Magnitude")
+        plt.ylabel("Frequency")
 
-        plt.xlabel('Weight Magnitude')
-        plt.ylabel('Frequency')
-
-        plt.title('Weight Distribution')
+        plt.title("Weight Distribution")
         plt.legend()
-        plt.savefig(save_path_weight, dpi=300)  # Higher resolution for better clarity
+        plt.savefig(
+            save_path_weight, dpi=300
+        )  # Higher resolution for better clarity
         plt.close()
+
 
 # Main Execution
 
@@ -807,60 +1146,88 @@ if __name__ == "__main__":
             print(f"\nTraining with rank={r}, scale={scale}")
             pre_trained_check_path = f"/home/s33zganj/VERA1/checkpoints/vit_base_patch16_224_in21k_{dataset_name}.pth"
 
-
             Kaiming
-            model, in_dim, out_dim = trainer.create_model(pre_trained_check_path)
-            model = trainer.apply_vera_to_attention(model, out_dim, in_dim, scale, r)
+            model, in_dim, out_dim = trainer.create_model(
+                pre_trained_check_path
+            )
+            model = trainer.apply_vera_to_attention(
+                model, out_dim, in_dim, scale, r
+            )
             model = trainer.freeze_parameters(model)
 
-            trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            trainable_params = sum(
+                p.numel() for p in model.parameters() if p.requires_grad
+            )
             trainable_params = round(trainable_params / 1000000, 4)
-            print(f"Trainable #Parameters with Head params: {trainable_params}M")
+            print(
+                f"Trainable #Parameters with Head params: {trainable_params}M"
+            )
 
-            finetuned_model, optimizer, acc, loss = trainer.train_and_evaluate(model, dataset_name)
-            results.setdefault('Kaiming', []).append(acc)
+            finetuned_model, optimizer, acc, loss = trainer.train_and_evaluate(
+                model, dataset_name
+            )
+            results.setdefault("Kaiming", []).append(acc)
             checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/kaiming_vera_model_{dataset_name}.pth"
-            trainer._save_checkpoint(checkpoint_path, finetuned_model, optimizer, acc, loss)
+            trainer._save_checkpoint(
+                checkpoint_path, finetuned_model, optimizer, acc, loss
+            )
             # pretrained_eigenvalues, pretrained_weights = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
             # his_path_eig = f"/home/s33zganj/VERA1/histograms/eigenvalues/eigen_hist_kaiming_{dataset_name}.png"
             # his_path_weight = f"/home/s33zganj/VERA1/histograms/weights/weight_hist_kaiming_{dataset_name}.png"
             # trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues,pretrained_weights, his_path_eig, his_path_weight)
 
-
-
             # # ## SVD
             model, _, _ = trainer.create_model(pre_trained_check_path)
-            model = trainer.apply_vera_to_attention_SVD(model, 768, 768, scale, r)
+            model = trainer.apply_vera_to_attention_SVD(
+                model, 768, 768, scale, r
+            )
             model = trainer.freeze_parameters(model)
 
-            trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            trainable_params = sum(
+                p.numel() for p in model.parameters() if p.requires_grad
+            )
             trainable_params = round(trainable_params / 1000000, 4)
-            print(f"Trainable #Parameters with Head params: {trainable_params}M")
+            print(
+                f"Trainable #Parameters with Head params: {trainable_params}M"
+            )
 
-            finetuned_model, optimizer, acc, loss = trainer.train_and_evaluate(model, dataset_name)
-            results.setdefault('SVD', []).append(acc)
+            finetuned_model, optimizer, acc, loss = trainer.train_and_evaluate(
+                model, dataset_name
+            )
+            results.setdefault("SVD", []).append(acc)
             checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/svd_vera_model_{dataset_name}.pth"
-            trainer._save_checkpoint(checkpoint_path, finetuned_model, optimizer, acc, loss)
-            #pretrained_eigenvalues, pretrained_weights = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
-            #his_path_eig = f"/home/s33zganj/VERA1/histograms/eigenvalues/eigen_hist_svd_{dataset_name}.png"
-            #his_path_weight = f"/home/s33zganj/VERA1/histograms/weights/weight_hist_svd_{dataset_name}.png"
+            trainer._save_checkpoint(
+                checkpoint_path, finetuned_model, optimizer, acc, loss
+            )
+            # pretrained_eigenvalues, pretrained_weights = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
+            # his_path_eig = f"/home/s33zganj/VERA1/histograms/eigenvalues/eigen_hist_svd_{dataset_name}.png"
+            # his_path_weight = f"/home/s33zganj/VERA1/histograms/weights/weight_hist_svd_{dataset_name}.png"
             # trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues, pretrained_weights, his_path_eig, his_path_weight)
-            
 
             #  Wavelet
             model, _, _ = trainer.create_model(pre_trained_check_path)
 
-            model = trainer.apply_vera_to_attention_Wavelet(model, 768, 768, scale, r)
+            model = trainer.apply_vera_to_attention_Wavelet(
+                model, 768, 768, scale, r
+            )
             model = trainer.freeze_parameters(model)
 
-            trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            trainable_params = sum(
+                p.numel() for p in model.parameters() if p.requires_grad
+            )
             trainable_params = round(trainable_params / 1000000, 4)
-            print(f"Trainable #Parameters with Head params: {trainable_params}M")
+            print(
+                f"Trainable #Parameters with Head params: {trainable_params}M"
+            )
 
-            finetuned_model, optimizer, acc, loss = trainer.train_and_evaluate(model, dataset_name)
-            results.setdefault('Wavelet', []).append(acc)
+            finetuned_model, optimizer, acc, loss = trainer.train_and_evaluate(
+                model, dataset_name
+            )
+            results.setdefault("Wavelet", []).append(acc)
             checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/wavelet_vera_model_{dataset_name}.pth"
-            trainer._save_checkpoint(checkpoint_path, finetuned_model, optimizer, acc, loss)
+            trainer._save_checkpoint(
+                checkpoint_path, finetuned_model, optimizer, acc, loss
+            )
             # pretrained_eigenvalues, pretrained_weights = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
             # his_path_eig = f"/home/s33zganj/VERA1/histograms/eigenvalues/eigen_hist_wavelet_{dataset_name}.png"
             # his_path_weight = f"/home/s33zganj/VERA1/histograms/weights/weight_hist_wavelet_{dataset_name}.png"
@@ -869,26 +1236,32 @@ if __name__ == "__main__":
 
             # # ## Fourier
             model, _, _ = trainer.create_model(pre_trained_check_path)
-            model = trainer.apply_vera_to_attention_Fourier(model, 768, 768, scale, r)
+            model = trainer.apply_vera_to_attention_Fourier(
+                model, 768, 768, scale, r
+            )
             model = trainer.freeze_parameters(model)
 
-            trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            trainable_params = sum(
+                p.numel() for p in model.parameters() if p.requires_grad
+            )
             trainable_params = round(trainable_params / 1000000, 4)
-            print(f"Trainable #Parameters with Head params: {trainable_params}M")
+            print(
+                f"Trainable #Parameters with Head params: {trainable_params}M"
+            )
 
-            finetuned_model, optimizer, acc, loss = trainer.train_and_evaluate(model, dataset_name)
-            results.setdefault('Fourier', []).append(acc)
+            finetuned_model, optimizer, acc, loss = trainer.train_and_evaluate(
+                model, dataset_name
+            )
+            results.setdefault("Fourier", []).append(acc)
             checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/fourier_vera_model_{dataset_name}.pth"
-            trainer._save_checkpoint(checkpoint_path, finetuned_model, optimizer, acc, loss)
+            trainer._save_checkpoint(
+                checkpoint_path, finetuned_model, optimizer, acc, loss
+            )
             # pretrained_eigenvalues, pretrained_weights = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
             # his_path_eig = f"/home/s33zganj/VERA1/histograms/eigenvalues/eigen_hist_fourier_{dataset_name}.png"
             # his_path_weight = f"/home/s33zganj/VERA1/histograms/weights/weight_hist_fourier_{dataset_name}.png"
             # trainer.eing_his(scale, checkpoint_path,  pretrained_eigenvalues, pretrained_weights, his_path_eig, his_path_weight)
-            
 
     # VeraTrainer.plot_conv_plot(dataset_name)
 
-
-    #VeraTrainer.plot_accuracy_comparison(results)
-
-
+    # VeraTrainer.plot_accuracy_comparison(results)

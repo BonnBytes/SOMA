@@ -14,9 +14,10 @@ class BaseVeraLayer(nn.Module):
         self.vera_A = None
         self.vera_B = None
         self.base_layer = base_layer
-        self.in_features, self.out_features = self._get_layer_dimensions(base_layer)
+        self.in_features, self.out_features = self._get_layer_dimensions(
+            base_layer
+        )
         self.kwargs = kwargs
-
 
     def get_base_layer(self):
         return self.base_layer
@@ -35,9 +36,9 @@ class BaseVeraLayer(nn.Module):
         device = self.base_layer.weight.device
         self.vera_lambda_b = self.vera_lambda_b.to(device)
         self.vera_lambda_d = self.vera_lambda_d.to(device)
-    
+
     def update_layer(self):
         """This method should be implemented by subclasses to define layer-specific updates."""
-        raise NotImplementedError("update_layer must be implemented in subclasses.")
-
-
+        raise NotImplementedError(
+            "update_layer must be implemented in subclasses."
+        )

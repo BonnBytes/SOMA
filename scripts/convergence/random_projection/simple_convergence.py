@@ -1,19 +1,26 @@
-import torch as th
-import numpy as np
-import random
-import torch.nn as nn
-from tqdm import tqdm
-import pickle
-import ptwt
-from scipy.linalg import hadamard
+"""MSE objective optimisation for various inits."""
 
-th.set_default_dtype(th.float32)
+import pickle
+import random
+from argparse import ArgumentParser, Namespace
+from typing import Tuple
+
+import numpy as np
+import ptwt
+import torch as th
+import torch.nn as nn
+from scipy.linalg import hadamard
+from tqdm import tqdm
 
 DEVICE = th.device("cuda") if th.cuda.is_available() else th.device("cpu")
-FULL_R = 784
-RANK = 256
 
-def setSeed(seed):
+
+def setSeed(seed: int) -> None:
+    """Set global seeds.
+
+    Args:
+        seed (int): Seed.
+    """
     np.random.seed(seed)
     random.seed(seed)
     th.manual_seed(seed)
@@ -23,90 +30,65 @@ def setSeed(seed):
 
 
 class FitModel(nn.Module):
-    def __init__(self):
-        super(FitModel, self).__init__()
-        self.A = th.empty((RANK, FULL_R))
-        self.B = th.empty((FULL_R, RANK))
-        self.normal_init()
-        self.lambda_d = nn.Parameter(th.empty(RANK), requires_grad=True)
-        self.lambda_b = nn.Parameter(th.empty(FULL_R), requires_grad=True)
+    """Random VeRA."""
 
-    def init_weights(self):
+    def __init__(self, full_rank: int, rank: int) -> None:
+        """Model intialisation.
+
+        Args:
+            full_rank (int): Full rank.
+            rank (int): VeRA rank.
+        """
+        super(FitModel, self).__init__()
+        self.A = th.empty((rank, full_rank))
+        self.B = th.empty((full_rank, rank))
+        self.__kaiming_normal_init()
+        self.lambda_d = nn.Parameter(th.empty(rank), requires_grad=True)
+        self.lambda_b = nn.Parameter(th.empty(full_rank), requires_grad=True)
+
+    def init_weights(self) -> None:
+        """Initialise lambdas."""
         nn.init.normal_(self.lambda_d)
         nn.init.zeros_(self.lambda_b)
 
-    def normal_init(self):
-        nn.init.xavier_normal_(self.A)
-        nn.init.xavier_normal_(self.B)
-    
-    def forward(self, x):
+    def __kaiming_normal_init(self) -> None:
+        """Kaiming init A and B."""
+        nn.init.kaiming_normal_(self.A)
+        nn.init.kaiming_normal_(self.B)
+
+    def forward(self, x: th.Tensor) -> th.Tensor:
+        """Forward pass.
+
+        Args:
+            x (th.Tensor): Input tensor.
+
+        Returns:
+            th.Tensor: VeRA output.
+        """
         x = self.A.to(DEVICE) @ x
         x = th.diag(self.lambda_d) @ x
         x = self.B.to(DEVICE) @ x
         y_out = th.diag(self.lambda_b) @ x
-        return y_out 
-
-
-# class FreqModel(nn.Module):
-#     def __init__(self):
-#         super(FreqModel, self).__init__()
-#         self.A = ptwt.matmul_transform.construct_boundary_a("Haar", length=FULL_R, device=DEVICE).to_dense().to(th.float32)
-#         self.B = ptwt.matmul_transform.construct_boundary_s("Haar", length=FULL_R, device=DEVICE).to_dense().to(th.float32)
-#         # self.wavelet_matrices()
-#         self.lambda_d = nn.Parameter(th.empty(RANK), requires_grad=True)
-#         self.zero_d = th.zeros(FULL_R-RANK)
-#         self.lambda_b = nn.Parameter(th.empty(FULL_R), requires_grad=True)
-    
-#     def init_weights(self):
-#         nn.init.normal_(self.lambda_d)
-#         nn.init.zeros_(self.lambda_b)
-    
-#     def forward(self, x):
-#         x = self.A.to(DEVICE) @ x
-#         x = th.diag(th.cat([self.lambda_d, self.zero_d.to(DEVICE)])) @ x
-#         x = self.B.to(DEVICE) @ x
-#         y_out = th.diag(self.lambda_b) @ x
-#         return y_out 
-
-# class FourierModel(nn.Module):
-#     def __init__(self):
-#         super(FourierModel, self).__init__()
-#         # self.A = self.fourier_matrix()
-#         # self.B = th.conj(self.A.T) / FULL_R
-#         # self.lambda_d = nn.Parameter(th.empty(RANK), requires_grad=True)
-#         # self.zero_d = th.randn(FULL_R-RANK)
-#         # self.lambda_b = nn.Parameter(th.empty(FULL_R), requires_grad=True)
-#         print("New fourier formulation")
-#         self.A = self.fourier_matrix()
-#         self.A = self.A[:RANK, :]
-#         self.B = th.conj(self.A.T) / FULL_R
-#         self.lambda_b = nn.Parameter(th.empty(FULL_R), requires_grad=True)
-#         self.lambda_d =  nn.Parameter(th.empty(RANK), requires_grad=True)
-    
-#     def init_weights(self):
-#         nn.init.normal_(self.lambda_d)
-#         nn.init.zeros_(self.lambda_b)
-
-#     def fourier_matrix(self):
-#         indices = th.arange(FULL_R)
-#         real_part = th.cos(-2 * th.pi * th.outer(indices, indices) / FULL_R)
-#         imag_part = th.sin(-2 * th.pi * th.outer(indices, indices) / FULL_R)
-#         return th.complex(real_part, imag_part)
-    
-#     def forward(self, x):
-#         # A, B = self.A.to(DEVICE).to(dtype=th.cfloat), self.B.to(DEVICE).to(dtype=th.cfloat)
-#         # lambda_b, lambda_d = self.lambda_b.to(DEVICE).to(dtype=th.cfloat), th.cat([self.lambda_d.to(DEVICE), self.zero_d.to(DEVICE)], dim=0).to(dtype=th.cfloat)
-#         # y_out = (th.diag(lambda_b) @ (B @ (th.diag(lambda_d) @ (A @ x.to(dtype=th.cfloat)))))
-#         # return y_out.real.to(th.float32)
-#         A, B = self.A.to(DEVICE), self.B.to(DEVICE)
-#         lambda_b, lambda_d = self.lambda_b.to(DEVICE).to(dtype=th.cfloat), self.lambda_d.to(DEVICE).to(dtype=th.cfloat)
-#         yout = (th.diag(lambda_b) @ (B @ (th.diag(lambda_d) @ (A @ x.to(dtype=th.cfloat)))))
-#         return yout.real.to(th.float32)
+        return y_out
 
 
 class OrthoFit(nn.Module):
-    def __init__(self, init_scheme="f"):
+    """Orthogonal VeRA."""
+
+    def __init__(self, full_rank: int, rank: int, init_scheme: str = "f"):
+        """Intiialise model.
+
+        Args:
+            full_rank (int): Full Rank.
+            rank (int): VeRA rank.
+            init_scheme (str, optional): Model intialisation scheme. Defaults to "f".
+
+        Raises:
+            ValueError: Raise error in wrong initialisation scheme.
+        """
         super().__init__()
+        self.full_rank = full_rank
+        self.rank = rank
         if init_scheme not in ["f", "w", "h", "m"]:
             raise ValueError("Improper init scheme")
         init_fn = self.fourier_inits
@@ -117,90 +99,175 @@ class OrthoFit(nn.Module):
         elif init_scheme == "m":
             init_fn = self.hippo_inits
         self.A, self.B = init_fn()
-        self.lambda_d = nn.Parameter(th.empty(RANK), requires_grad=True)
-        self.zeros = th.zeros(FULL_R-RANK)
-        self.lambda_b = nn.Parameter(th.empty(FULL_R), requires_grad=True)
+        self.lambda_d = nn.Parameter(th.empty(rank), requires_grad=True)
+        self.zeros = th.zeros(full_rank - rank)
+        self.lambda_b = nn.Parameter(th.empty(full_rank), requires_grad=True)
         self.init_scheme = init_scheme
-    
-    def fourier_inits(self):
+
+    def fourier_inits(self) -> Tuple[th.Tensor, th.Tensor]:
+        """Fourier initialsiation
+
+        Returns:
+            Tuple[th.Tensor, th.Tensor]: Fourier intialised A and B matrices.
+        """
         print("Fourier init")
+
         def fourier_matrix(x):
             indices = th.arange(x)
             real_part = th.cos(-2 * th.pi * th.outer(indices, indices) / x)
             imag_part = th.sin(-2 * th.pi * th.outer(indices, indices) / x)
             return th.complex(real_part, imag_part)
+
         def inv_fourier(x):
             Q = fourier_matrix(x)
             return th.conj(Q.T) / x
-        A = fourier_matrix(FULL_R)
-        B = inv_fourier(FULL_R)
+
+        A = fourier_matrix(self.full_rank)
+        B = inv_fourier(self.full_rank)
         return A, B
 
-    def wavelet_inits(self):
+    def wavelet_inits(self) -> Tuple[th.Tensor, th.Tensor]:
+        """Wavelet initialisation
+
+        Returns:
+            Tuple[th.Tensor, th.Tensor]: Wavelet intialised A and B matrices.
+        """
         print("Wavelet init")
-        A = ptwt.matmul_transform.construct_boundary_a("Haar", length=FULL_R).to_dense()
-        B = ptwt.matmul_transform.construct_boundary_s("Haar", length=FULL_R).to_dense()
-        return A, B
-    
-    def welsh_inits(self):
-        print("Welsh-hadamard init")
-        A = th.from_numpy(hadamard(1024))
-        B = th.from_numpy(hadamard(1024))
-        A = A[:FULL_R, :FULL_R]
-        B = B[:FULL_R, :FULL_R]
+        A = ptwt.matmul_transform.construct_boundary_a(
+            "Haar", length=self.full_rank
+        ).to_dense()
+        B = ptwt.matmul_transform.construct_boundary_s(
+            "Haar", length=self.full_rank
+        ).to_dense()
         return A, B
 
-    def hippo_inits(self):
+    def welsh_inits(self) -> Tuple[th.Tensor, th.Tensor]:
+        """Welsh-Hadamard intialisation.
+
+        Returns:
+            Tuple[th.Tensor, th.Tensor]: Welsh intialised A and B matrices.
+        """
+        print("Welsh-hadamard init")
+        power = self.next_pow(self.full_rank)
+        A = th.from_numpy(hadamard(power))
+        B = th.from_numpy(hadamard(power))
+        A = A[: self.full_rank, : self.full_rank]
+        B = A.T
+        return A, B
+
+    def next_pow(self, n: int) -> int:
+        """Find next power of 2.
+
+        Args:
+            n (int): Number of interest.
+
+        Returns:
+            int: Next nearest number with power of 2.
+        """
+        if n <= 0:
+            return 1
+        if n & (n - 1) == 0:
+            return n
+        return 1 << n.bit_length()
+
+    def hippo_inits(self) -> Tuple[th.Tensor, th.Tensor]:
+        """Hippo Intialisation.
+
+        Returns:
+            Tuple[th.Tensor, th.Tensor]: Hippo intialised A and B matrices.
+        """
         print("Hippo init")
-        def create_hippo(N):
+
+        def create_hippo(N: int) -> th.Tensor:
+            """Create Hippo matrix.
+
+            Args:
+                N (int): matrix size.
+
+            Returns:
+                th.Tensor: Hippo matrix.
+            """
             matrix = th.zeros((N, N))
             for n in range(N):
                 for k in range(N):
                     if n < k:
                         matrix[n, k] = 0
                     elif n == k:
-                        matrix[n, k] = n+1
+                        matrix[n, k] = n + 1
                     elif n > k:
-                        matrix[n, k] = ((2*n+1)**0.5)*((2*k+1)**0.5)
+                        matrix[n, k] = ((2 * n + 1) ** 0.5) * (
+                            (2 * k + 1) ** 0.5
+                        )
             return matrix
-        A = create_hippo(FULL_R)
+
+        A = create_hippo(self.full_rank)
         B = th.linalg.inv(A)
         return A, B
-    
+
     def init_weights(self):
+        """Initialise lamdbas."""
         nn.init.normal_(self.lambda_d)
         nn.init.zeros_(self.lambda_b)
 
-    def forward(self, x):
+    def forward(self, x: th.Tensor) -> th.Tensor:
+        """Forward pass.
+
+        Args:
+            x (th.Tensor): Input tensor.
+
+        Returns:
+            th.Tensor: Ortho-VeRA output.
+        """
         if self.init_scheme != "f":
             dt = th.float32
         elif self.init_scheme == "f":
             dt = th.cfloat
-        l_d = th.diag(th.cat([self.lambda_d.to(dtype=dt), self.zeros.to(dtype=dt).to(DEVICE)])).to(dtype=dt)
+        l_d = th.diag(
+            th.cat(
+                [
+                    self.lambda_d.to(dtype=dt),
+                    self.zeros.to(dtype=dt).to(DEVICE),
+                ]
+            )
+        ).to(dtype=dt)
         l_b = th.diag(self.lambda_b.to(dtype=dt)).to(dtype=dt)
-        H = l_b @ self.B.to(DEVICE).to(dtype=dt) @ l_d @ self.A.to(DEVICE).to(dtype=dt)
+        H = (
+            l_b
+            @ self.B.to(DEVICE).to(dtype=dt)
+            @ l_d
+            @ self.A.to(DEVICE).to(dtype=dt)
+        )
         y_out = H @ x.to(dtype=dt)
         if self.init_scheme == "f":
             return y_out.real.to(th.float32)
         return y_out.to(th.float32)
 
 
-def main():
-    epochs = 1000
+def main(args: Namespace):
+    """Main function.
+
+    Args:
+        args (Namespace): CLI arguments.
+    """
+    print(f"Using backend: {DEVICE}")
     seed_mses = []
     for seed in range(0, 10):
         print(f"Seed: {seed}")
+        setSeed(seed)
         mses = []
-        y = th.randn((FULL_R, 1))
-        x = th.ones((FULL_R, 1))
-        model = OrthoFit(init_scheme="m")
-        # model = FitModel()
+        y = th.randn((args.full_rank, 1))
+        x = th.ones((args.full_rank, 1))
+        model = (
+            FitModel(args.full_rank, args.rank)
+            if args.init == "r"
+            else OrthoFit(args.full_rank, args.rank, args.init)
+        )
         model.init_weights()
         model = model.to(DEVICE)
         y, x = y.to(DEVICE), x.to(DEVICE)
         loss = nn.MSELoss()
         opt = th.optim.Adam(model.parameters(), lr=1e-3)
-        for epoch in (pbar:=tqdm(range(0, epochs))):
+        for epoch in (pbar := tqdm(range(0, args.iterations))):
             opt.zero_grad()
             out = model(x)
             loss_val = loss(out, y)
@@ -209,9 +276,27 @@ def main():
             mses.append(loss_val.item())
             pbar.set_description(f"Epoch: {epoch} -- Loss: {loss_val.item()}")
         seed_mses.append(mses)
-    with open("hippo_mse_zero.pkl", "wb") as fp:
+    with open(f"{args.init}_mse.pkl", "wb") as fp:
         pickle.dump(seed_mses, fp)
 
 
 if __name__ == "__main__":
-    main()
+    parser = ArgumentParser(description="MSE Objektive")
+    parser.add_argument(
+        "--init",
+        type=str,
+        choices=["f", "w", "h", "m", "r"],
+        required=True,
+        help="Intialisation method to choose",
+    )
+    parser.add_argument(
+        "--iterations", type=int, default=2500, help="Number of iterations"
+    )
+    parser.add_argument(
+        "--full_rank", type=int, default=768, help="Full rank of the matrices"
+    )
+    parser.add_argument(
+        "--rank", type=int, default=256, help="VeRA rank of the matrices"
+    )
+    args = parser.parse_args()
+    main(args)
