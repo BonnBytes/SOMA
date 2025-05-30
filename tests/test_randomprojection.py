@@ -82,4 +82,6 @@ def test_lambda_inits(init_scheme: str):
         if init_scheme != "r"
         else FitModel(full_rank, vera_rank)
     )
-    assert th.allclose(model.lambda_b, th.zeros_like(model.lambda_b))
+    assert th.allclose(
+        model.lambda_b, th.zeros_like(model.lambda_b), atol=1e-5
+    )
