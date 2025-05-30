@@ -24,3 +24,10 @@ repos:
         files: ^tests/.*\.py$
         pass_filenames: false
         always_run: true
+
+      - id: flake8
+        name: flake8
+        entry: uv run flake8
+        language: system
+        files: ^(scripts/convergence/random_projection/|tests/test_randomprojection\.py)$
+        types: [python]

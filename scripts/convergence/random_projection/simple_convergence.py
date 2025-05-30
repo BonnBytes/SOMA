@@ -3,7 +3,7 @@
 import pickle
 import random
 from argparse import ArgumentParser, Namespace
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 import ptwt
@@ -15,7 +15,7 @@ from tqdm import tqdm
 DEVICE = th.device("cuda") if th.cuda.is_available() else th.device("cpu")
 
 
-def setSeed(seed: int) -> None:
+def setseed(seed: int) -> None:
     """Set global seeds.
 
     Args:
@@ -75,7 +75,9 @@ class FitModel(nn.Module):
 class OrthoFit(nn.Module):
     """Orthogonal VeRA."""
 
-    def __init__(self, full_rank: int, rank: int, init_scheme: str = "f"):
+    def __init__(
+        self, full_rank: int, rank: int, init_scheme: Optional[str] = "f"
+    ):
         """Intiialise model.
 
         Args:
@@ -105,7 +107,7 @@ class OrthoFit(nn.Module):
         self.init_scheme = init_scheme
 
     def fourier_inits(self) -> Tuple[th.Tensor, th.Tensor]:
-        """Fourier initialsiation
+        """Fourier initialsiation.
 
         Returns:
             Tuple[th.Tensor, th.Tensor]: Fourier intialised A and B matrices.
@@ -127,7 +129,7 @@ class OrthoFit(nn.Module):
         return A, B
 
     def wavelet_inits(self) -> Tuple[th.Tensor, th.Tensor]:
-        """Wavelet initialisation
+        """Wavelet initialisation.
 
         Returns:
             Tuple[th.Tensor, th.Tensor]: Wavelet intialised A and B matrices.
@@ -178,18 +180,18 @@ class OrthoFit(nn.Module):
         """
         print("Hippo init")
 
-        def create_hippo(N: int) -> th.Tensor:
+        def create_hippo(num: int) -> th.Tensor:
             """Create Hippo matrix.
 
             Args:
-                N (int): matrix size.
+                num (int): matrix size.
 
             Returns:
                 th.Tensor: Hippo matrix.
             """
-            matrix = th.zeros((N, N))
-            for n in range(N):
-                for k in range(N):
+            matrix = th.zeros((num, num))
+            for n in range(num):
+                for k in range(num):
                     if n < k:
                         matrix[n, k] = 0
                     elif n == k:
@@ -244,7 +246,7 @@ class OrthoFit(nn.Module):
 
 
 def main(args: Namespace):
-    """Main function.
+    """MSE objective optimisation.
 
     Args:
         args (Namespace): CLI arguments.
@@ -253,7 +255,7 @@ def main(args: Namespace):
     seed_mses = []
     for seed in range(0, 10):
         print(f"Seed: {seed}")
-        setSeed(seed)
+        setseed(seed)
         mses = []
         y = th.randn((args.full_rank, 1))
         x = th.ones((args.full_rank, 1))

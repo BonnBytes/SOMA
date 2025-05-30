@@ -4,7 +4,6 @@ import pickle
 
 import matplotlib.pyplot as plt
 import numpy as np
-import torch as th
 
 
 def load_file(fname: str) -> np.ndarray:

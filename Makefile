@@ -1,4 +1,4 @@
-.PHONY: format check-format test check-all all
+.PHONY: format check-format test lint check-all typing all
 
 # Format code
 format:
@@ -10,6 +10,12 @@ check-format:
 	uv run isort --check-only --diff scripts/convergence/random_projection tests/test_randomprojection.py
 	uv run black --check --diff scripts/convergence/random_projection tests/test_randomprojection.py
 
+lint:
+	uv run flake8 scripts/convergence/random_projection/ tests/test_randomprojection.py
+
+typing:
+	@echo "Add mypy later here"
+
 test:
 	uv run pytest
 
@@ -17,5 +23,5 @@ test:
 check-all:
 	uv run pre-commit run --all-files
 
-all: format test
+all: format test lint
 	@echo "All checks passed!"
