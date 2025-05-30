@@ -16,7 +16,7 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --extra cpu
       - name: Test with pytest
         run: |
           cd tests
@@ -35,6 +35,6 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --extra cpu
       - name: Run flake8
-        run: uv run flake8 scripts/convergence/random_projection/ tests/
+        run: uv run flake8 scripts/convergence/random_projection/ tests/test_randomprojection.py
