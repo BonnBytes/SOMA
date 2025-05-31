@@ -35,6 +35,12 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
       - name: Install dependencies
+<<<<<<< HEAD
         run: uv tool install flake8
+=======
+        run: |
+          rm -f uv.lock
+          uv sync --extra cpu
+>>>>>>> 8328eb5eb0bfd016b57077a238763dd6b3dc3307
       - name: Run flake8
         run: uv run flake8 scripts/convergence/random_projection/ tests/test_randomprojection.py
