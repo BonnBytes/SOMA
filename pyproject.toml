@@ -14,12 +14,6 @@ dependencies = [
     "transformers>=4.52.4",
 ]
 
-dev-dependencies = [
-    "black",
-    "isort", 
-    "pre-commit",
-]
-
 [project.optional-dependencies]
 cpu = [
   "torch==2.6",
