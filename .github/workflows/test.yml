@@ -13,9 +13,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: |
-          rm -f uv.lock
-          uv sync --extra cpu --resolution=highest --no-cache
+        run: uv sync --extra cpu --no-cache --no-lock
       - name: Test with pytest
         run: |
           cd tests
