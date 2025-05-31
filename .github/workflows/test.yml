@@ -13,9 +13,7 @@ jobs:
       - name: Install dependencies (CPU only)
         run: uv sync --extra cpu --no-dev
       - name: Test with pytest
-        run: |
-          cd tests
-          uv run pytest
+        run: uv run pytest
 
   lint:
     name: Lint
