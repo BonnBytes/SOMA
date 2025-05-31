@@ -13,6 +13,9 @@ jobs:
       - name: Install dependencies (CPU only)
         run: uv sync --extra cpu --no-dev
       - name: Test with pytest
+        env:
+          PIP_INDEX_URL: https://download.pytorch.org/whl/cpu
+          UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
         run: uv run pytest
 
   lint:
