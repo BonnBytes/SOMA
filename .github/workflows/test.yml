@@ -4,22 +4,21 @@ jobs:
   tests:
     name: Tests
     runs-on: ubuntu-latest
-    env:
-      UV_TORCH_BACKEND: cpu
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
         uses: astral-sh/setup-uv@v3
       - name: Set up Python 3.12
         run: uv python install 3.12
-      - name: Install dependencies
+      - name: Install dependencies (CPU only)
         run: |
           rm -f uv.lock
-          uv sync --extra cpu
+          uv sync --extra cpu --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple/ --no-cache
       - name: Test with pytest
         run: |
           cd tests
           uv run pytest
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
