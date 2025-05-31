@@ -11,7 +11,7 @@ from scripts.train import VeraTrainer
 
 @pytest.fixture
 def trainer():
-    return VeraTrainer(dataset="Cifar100", seed=1, device="cuda")
+    return VeraTrainer(dataset="Cifar100", seed=1)
 
 
 # -------------------- Test Initialization Helpers --------------------
