@@ -12,8 +12,6 @@ import torch.nn as nn
 from scipy.linalg import hadamard
 from tqdm import tqdm
 
-DEVICE = th.device("cuda") if th.cuda.is_available() else th.device("cpu")
-
 
 def setseed(seed: int) -> None:
     """Set global seeds.
@@ -65,9 +63,10 @@ class FitModel(nn.Module):
         Returns:
             th.Tensor: VeRA output.
         """
-        x = self.A.to(DEVICE) @ x
+        device = x.device
+        x = self.A.to(device) @ x
         x = th.diag(self.lambda_d) @ x
-        x = self.B.to(DEVICE) @ x
+        x = self.B.to(device) @ x
         y_out = th.diag(self.lambda_b) @ x
         return y_out
 
@@ -220,6 +219,7 @@ class OrthoFit(nn.Module):
         Returns:
             th.Tensor: Ortho-VeRA output.
         """
+        device = x.device
         if self.init_scheme != "f":
             dt = th.float32
         elif self.init_scheme == "f":
@@ -228,16 +228,16 @@ class OrthoFit(nn.Module):
             th.cat(
                 [
                     self.lambda_d.to(dtype=dt),
-                    self.zeros.to(dtype=dt).to(DEVICE),
+                    self.zeros.to(dtype=dt).to(device),
                 ]
             )
         ).to(dtype=dt)
         l_b = th.diag(self.lambda_b.to(dtype=dt)).to(dtype=dt)
         H = (
             l_b
-            @ self.B.to(DEVICE).to(dtype=dt)
+            @ self.B.to(device).to(dtype=dt)
             @ l_d
-            @ self.A.to(DEVICE).to(dtype=dt)
+            @ self.A.to(device).to(dtype=dt)
         )
         y_out = H @ x.to(dtype=dt)
         if self.init_scheme == "f":
@@ -251,7 +251,8 @@ def main(args: Namespace):
     Args:
         args (Namespace): CLI arguments.
     """
-    print(f"Using backend: {DEVICE}")
+    device = th.device("cuda") if th.cuda.is_available() else th.device("cpu")
+    print(f"Using backend: {device}")
     seed_mses = []
     for seed in range(0, 10):
         print(f"Seed: {seed}")
@@ -265,8 +266,8 @@ def main(args: Namespace):
             else OrthoFit(args.full_rank, args.rank, args.init)
         )
         model.init_weights()
-        model = model.to(DEVICE)
-        y, x = y.to(DEVICE), x.to(DEVICE)
+        model = model.to(device)
+        y, x = y.to(device), x.to(device)
         loss = nn.MSELoss()
         opt = th.optim.Adam(model.parameters(), lr=1e-3)
         for epoch in (pbar := tqdm(range(0, args.iterations))):
