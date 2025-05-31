@@ -2,21 +2,21 @@ name: Tests
 on: [ push, pull_request ]
 
 jobs:
-  tests:
+    tests:
     name: Tests
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ ubuntu-latest ]
-        python-version: ["3.12"]
+    runs-on: ubuntu-latest
+    env:
+      UV_TORCH_BACKEND: cpu
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
         uses: astral-sh/setup-uv@v3
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
+      - name: Set up Python 3.12
+        run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --extra cpu
+        run: |
+          rm -f uv.lock
+          uv sync --extra cpu
       - name: Test with pytest
         run: |
           cd tests
@@ -35,6 +35,6 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
       - name: Install dependencies
-        run: uv sync --extra cpu
+        run: uv tool install flake8
       - name: Run flake8
         run: uv run flake8 scripts/convergence/random_projection/ tests/test_randomprojection.py

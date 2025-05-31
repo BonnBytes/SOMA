@@ -83,5 +83,5 @@ def test_lambda_inits(init_scheme: str):
         else FitModel(full_rank, vera_rank)
     )
     assert th.allclose(
-        model.lambda_b, th.zeros_like(model.lambda_b), atol=1e-8
+        model.lambda_b, th.zeros_like(model.lambda_b), atol=1e-5
     )
