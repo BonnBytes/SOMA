@@ -11,7 +11,7 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies (CPU only)
-        run: uv sync --extra cpu
+        run: uv sync --extra cpu --no-dev
       - name: Test with pytest
         run: |
           cd tests
