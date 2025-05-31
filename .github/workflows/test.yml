@@ -13,7 +13,11 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
       - name: Install dependencies
-        run: uv sync --extra cpu --no-cache --no-lock
+        run: |
+          rm -f uv.lock
+          uv lock --extra cpu --index-url https://download.pytorch.org/whl/cpu
+      - name: Install from lock file
+        run: uv sync --frozen
       - name: Test with pytest
         run: |
           cd tests
