@@ -64,6 +64,17 @@ py_version = 312
 line-length = 79
 target-version = ['py312']
 
+[tool.mypy]
+python_version = "3.12"  # or your target Python version
+install_types = true
+non_interactive = true
+ignore_missing_imports = true
+strict_optional = false
+warn_return_any = false
+implicit_reexport = true
+allow_untyped_calls = true
+explicit_package_bases = true
+
 [dependency-groups]
 dev = [
     "black>=25.1.0",
@@ -74,6 +85,7 @@ dev = [
     "flake8-bugbear>=24.12.12",
     "flake8-docstrings>=1.7.0",
     "isort>=6.0.1",
+    "mypy>=1.16.0",
     "pep8-naming>=0.15.1",
     "pre-commit>=4.2.0",
     "pydocstyle>=6.3.0",

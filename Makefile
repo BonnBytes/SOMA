@@ -14,7 +14,7 @@ lint:
 	uv run flake8 scripts/convergence/random_projection/ tests/test_randomprojection.py
 
 typing:
-	@echo "Add mypy later here"
+	uv run mypy scripts/convergence/random_projection tests/test_randomprojection.py
 
 test:
 	uv run pytest
@@ -23,5 +23,5 @@ test:
 check-all:
 	uv run pre-commit run --all-files
 
-all: format test lint
+all: format test lint typing
 	@echo "All checks passed!"
