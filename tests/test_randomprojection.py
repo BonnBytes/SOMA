@@ -75,8 +75,8 @@ def test_lambda_inits(init_scheme: str):
     Args:
         init_scheme (str): String containing initialisation scheme.
     """
-    full_rank = 10
-    vera_rank = 2
+    full_rank = 256
+    vera_rank = 32
     model = (
         OrthoFit(full_rank, vera_rank, init_scheme)
         if init_scheme != "r"
