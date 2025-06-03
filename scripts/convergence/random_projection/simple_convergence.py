@@ -290,7 +290,10 @@ def main(args: Namespace):
             mses.append(loss_val.item())
             pbar.set_description(f"Epoch: {epoch} -- Loss: {loss_val.item()}")
         seed_mses.append(mses)
-    with open(f"{args.init}_mse.pkl", "wb") as fp:
+    with open(
+        f"{args.init}_mse_{args.rank}_ut_init_{args.untrain_lambda_init}.pkl",
+        "wb",
+    ) as fp:
         pickle.dump(seed_mses, fp)
 
 
