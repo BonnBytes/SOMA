@@ -663,6 +663,10 @@ dev = [
     { name = "pep8-naming" },
     { name = "pre-commit" },
     { name = "pydocstyle" },
+    { name = "types-pyyaml" },
+    { name = "types-requests" },
+    { name = "types-simplejson" },
+    { name = "types-tabulate" },
 ]
 
 [package.metadata]
@@ -697,6 +701,10 @@ dev = [
     { name = "pep8-naming", specifier = ">=0.15.1" },
     { name = "pre-commit", specifier = ">=4.2.0" },
     { name = "pydocstyle", specifier = ">=6.3.0" },
+    { name = "types-pyyaml", specifier = ">=6.0.12.20250516" },
+    { name = "types-requests", specifier = ">=2.32.0.20250602" },
+    { name = "types-simplejson", specifier = ">=3.20.0.20250326" },
+    { name = "types-tabulate", specifier = ">=0.9.0.20241207" },
 ]
 
 [[package]]
@@ -1259,6 +1267,45 @@ version = "3.2.0"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/06/00/59500052cb1cf8cf5316be93598946bc451f14072c6ff256904428eaf03c/triton-3.2.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:8d9b215efc1c26fa7eefb9a157915c92d52e000d2bf83e5f69704047e63f125c", size = 253159365, upload-time = "2025-01-22T19:13:24.648Z" },
+]
+
+[[package]]
+name = "types-pyyaml"
+version = "6.0.12.20250516"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4e/22/59e2aeb48ceeee1f7cd4537db9568df80d62bdb44a7f9e743502ea8aab9c/types_pyyaml-6.0.12.20250516.tar.gz", hash = "sha256:9f21a70216fc0fa1b216a8176db5f9e0af6eb35d2f2932acb87689d03a5bf6ba", size = 17378, upload-time = "2025-05-16T03:08:04.897Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/99/5f/e0af6f7f6a260d9af67e1db4f54d732abad514252a7a378a6c4d17dd1036/types_pyyaml-6.0.12.20250516-py3-none-any.whl", hash = "sha256:8478208feaeb53a34cb5d970c56a7cd76b72659442e733e268a94dc72b2d0530", size = 20312, upload-time = "2025-05-16T03:08:04.019Z" },
+]
+
+[[package]]
+name = "types-requests"
+version = "2.32.0.20250602"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/48/b0/5321e6eeba5d59e4347fcf9bf06a5052f085c3aa0f4876230566d6a4dc97/types_requests-2.32.0.20250602.tar.gz", hash = "sha256:ee603aeefec42051195ae62ca7667cd909a2f8128fdf8aad9e8a5219ecfab3bf", size = 23042, upload-time = "2025-06-02T03:15:02.958Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/da/18/9b782980e575c6581d5c0c1c99f4c6f89a1d7173dad072ee96b2756c02e6/types_requests-2.32.0.20250602-py3-none-any.whl", hash = "sha256:f4f335f87779b47ce10b8b8597b409130299f6971ead27fead4fe7ba6ea3e726", size = 20638, upload-time = "2025-06-02T03:15:01.959Z" },
+]
+
+[[package]]
+name = "types-simplejson"
+version = "3.20.0.20250326"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/af/14/e26fc55e1ea56f9ea470917d3e2f8240e6d043ca914181021d04115ae0f7/types_simplejson-3.20.0.20250326.tar.gz", hash = "sha256:b2689bc91e0e672d7a5a947b4cb546b76ae7ddc2899c6678e72a10bf96cd97d2", size = 10489, upload-time = "2025-03-26T02:53:35.825Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/76/bf/d3f3a5ba47fd18115e8446d39f025b85905d2008677c29ee4d03b4cddd57/types_simplejson-3.20.0.20250326-py3-none-any.whl", hash = "sha256:db1ddea7b8f7623b27a137578f22fc6c618db8c83ccfb1828ca0d2f0ec11efa7", size = 10462, upload-time = "2025-03-26T02:53:35.036Z" },
+]
+
+[[package]]
+name = "types-tabulate"
+version = "0.9.0.20241207"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/3f/43/16030404a327e4ff8c692f2273854019ed36718667b2993609dc37d14dd4/types_tabulate-0.9.0.20241207.tar.gz", hash = "sha256:ac1ac174750c0a385dfd248edc6279fa328aaf4ea317915ab879a2ec47833230", size = 8195, upload-time = "2024-12-07T02:54:42.554Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5e/86/a9ebfd509cbe74471106dffed320e208c72537f9aeb0a55eaa6b1b5e4d17/types_tabulate-0.9.0.20241207-py3-none-any.whl", hash = "sha256:b8dad1343c2a8ba5861c5441370c3e35908edd234ff036d4298708a1d4cf8a85", size = 8307, upload-time = "2024-12-07T02:54:41.031Z" },
 ]
 
 [[package]]

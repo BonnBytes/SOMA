@@ -3,12 +3,14 @@
 import pickle
 import random
 from argparse import ArgumentParser, Namespace
+from copy import deepcopy
 from typing import Optional, Tuple
 
 import numpy as np
-import ptwt
 import torch as th
 import torch.nn as nn
+from ptwt.matmul_transform import construct_boundary_a, construct_boundary_s
+from ptwt.sparse_math import cat_sparse_identity_matrix
 from scipy.linalg import hadamard
 from tqdm import tqdm
 
@@ -136,6 +138,49 @@ class OrthoFit(nn.Module):
         B = inv_fourier(self.full_rank)
         return A, B
 
+    def __construct_wavelet_matrices(
+        self, tranform_level: int, mat_type: str
+    ) -> th.Tensor:
+        """Construct multi-level wavelet basis.
+
+        Args:
+            tranform_level (int): Wavelet transformation level.
+            mat_type (str): Type of wavelet matrix, analysis or synthesis matrix.
+
+        Returns:
+            th.Tensor: Multi-level wavelet basis matrix.
+        """
+        matrices = []
+        length = deepcopy(self.full_rank)
+        wavelet_fn = (
+            construct_boundary_a if mat_type == "a" else construct_boundary_s
+        )
+        for i in range(tranform_level):
+            mat = wavelet_fn(wavelet="Haar", length=length)
+            length = length // 2
+            if i != 0:
+                mat = cat_sparse_identity_matrix(mat, self.full_rank)
+            matrices.append(mat)
+        return self.__construct_final_matrix(mat_type, tuple(matrices))
+
+    def __construct_final_matrix(
+        self, mat_type: str, matrices: Tuple[th.Tensor, ...]
+    ) -> th.Tensor:
+        """Multiply multiple levels of wavelet matrices.
+
+        Args:
+            mat_type (str): Type of wavelet matrix, analysis or synthesis matrix.
+            matrices (Tuple[th.Tensor, ...]): Tuple of multi-level wavelet matrices.
+
+        Returns:
+            th.Tensor: Multi-level wavelet basis matrix.
+        """
+        final_matrix = th.eye(self.full_rank, dtype=matrices[0].dtype)
+        matrices = matrices if mat_type == "s" else matrices[::-1]
+        for mat in matrices:
+            final_matrix = final_matrix @ mat
+        return final_matrix
+
     def wavelet_inits(self) -> Tuple[th.Tensor, th.Tensor]:
         """Wavelet initialisation.
 
@@ -143,12 +188,9 @@ class OrthoFit(nn.Module):
             Tuple[th.Tensor, th.Tensor]: Wavelet intialised A and B matrices.
         """
         print("Wavelet init")
-        A = ptwt.matmul_transform.construct_boundary_a(
-            "Haar", length=self.full_rank
-        ).to_dense()
-        B = ptwt.matmul_transform.construct_boundary_s(
-            "Haar", length=self.full_rank
-        ).to_dense()
+        transform_level = 3
+        A = self.__construct_wavelet_matrices(transform_level, "a").to_dense()
+        B = self.__construct_wavelet_matrices(transform_level, "s").to_dense()
         return A, B
 
     def welsh_inits(self) -> Tuple[th.Tensor, th.Tensor]:
