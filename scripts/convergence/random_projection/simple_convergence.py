@@ -75,14 +75,19 @@ class OrthoFit(nn.Module):
     """Orthogonal VeRA."""
 
     def __init__(
-        self, full_rank: int, rank: int, init_scheme: Optional[str] = "f"
+        self,
+        full_rank: int,
+        rank: int,
+        untrain_lambda_init: Optional[str] = "z",
+        init_scheme: Optional[str] = "f",
     ):
         """Intiialise model.
 
         Args:
             full_rank (int): Full Rank.
             rank (int): VeRA rank.
-            init_scheme (str, optional): Model intialisation scheme. Defaults to "f".
+            untrain_lambda_init (str, optional): Initialise untrained lambdas. Defaults to zero.
+            init_scheme (str, optional): Model intialisation scheme. Defaults to fourier.
 
         Raises:
             ValueError: Raise error in wrong initialisation scheme.
@@ -101,7 +106,11 @@ class OrthoFit(nn.Module):
             init_fn = self.hippo_inits
         self.A, self.B = init_fn()
         self.lambda_d = nn.Parameter(th.empty(rank), requires_grad=True)
-        self.zeros = th.zeros(full_rank - rank)
+        self.ut_lambdas = th.zeros(full_rank - rank)
+        if untrain_lambda_init == "o":
+            self.ut_lambdas = th.ones(full_rank - rank)
+        elif untrain_lambda_init == "r":
+            self.ut_lambdas = th.randn(full_rank - rank)
         self.lambda_b = nn.Parameter(th.empty(full_rank), requires_grad=True)
         self.init_scheme = init_scheme
 
@@ -228,7 +237,7 @@ class OrthoFit(nn.Module):
             th.cat(
                 [
                     self.lambda_d.to(dtype=dt),
-                    self.zeros.to(dtype=dt).to(device),
+                    self.ut_lambdas.to(dtype=dt).to(device),
                 ]
             )
         ).to(dtype=dt)
@@ -263,7 +272,9 @@ def main(args: Namespace):
         model = (
             FitModel(args.full_rank, args.rank)
             if args.init == "r"
-            else OrthoFit(args.full_rank, args.rank, args.init)
+            else OrthoFit(
+                args.full_rank, args.rank, args.untrain_lambda_init, args.init
+            )
         )
         model.init_weights()
         model = model.to(device)
@@ -300,6 +311,13 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--rank", type=int, default=256, help="VeRA rank of the matrices"
+    )
+    parser.add_argument(
+        "--untrain_lambda_init",
+        type=str,
+        choices=["z", "o", "r"],
+        default="z",
+        help="Intialise argument for untrained lambdas.",
     )
     args = parser.parse_args()
     main(args)

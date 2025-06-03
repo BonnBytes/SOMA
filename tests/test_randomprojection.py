@@ -23,7 +23,7 @@ def test_zero_output(init_scheme: str):
     x = th.ones((full_rank, 1))
     y = th.zeros((full_rank, 1))
     model = (
-        OrthoFit(full_rank, vera_rank, init_scheme)
+        OrthoFit(full_rank, vera_rank, "z", init_scheme)
         if init_scheme != "r"
         else FitModel(full_rank, vera_rank)
     )
@@ -43,7 +43,7 @@ def test_nextpower(io_maps: Tuple[int, int]):
     """
     full_rank, near_power = io_maps
     vera_rank = 1
-    model = OrthoFit(full_rank, vera_rank, "h")
+    model = OrthoFit(full_rank, vera_rank, "z", "h")
     pow_returned = model.next_pow(full_rank)
     assert pow_returned == near_power
 
@@ -63,7 +63,7 @@ def test_walsh_init(degree: Tuple[int, th.Tensor]):
     """
     full_rank, result = degree
     vera_rank = 1
-    model = OrthoFit(full_rank, vera_rank, "h")
+    model = OrthoFit(full_rank, vera_rank, "z", "h")
     assert th.allclose(model.A, result)
     assert th.allclose(model.B, result.T)
 
@@ -78,7 +78,7 @@ def test_lambda_inits(init_scheme: str):
     full_rank = 256
     vera_rank = 32
     model = (
-        OrthoFit(full_rank, vera_rank, init_scheme)
+        OrthoFit(full_rank, vera_rank, "z", init_scheme)
         if init_scheme != "r"
         else FitModel(full_rank, vera_rank)
     )
