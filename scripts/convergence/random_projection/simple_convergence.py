@@ -188,7 +188,7 @@ class OrthoFit(nn.Module):
             Tuple[th.Tensor, th.Tensor]: Wavelet intialised A and B matrices.
         """
         print("Wavelet init")
-        transform_level = 3
+        transform_level = 4
         A = self.__construct_wavelet_matrices(transform_level, "a").to_dense()
         B = self.__construct_wavelet_matrices(transform_level, "s").to_dense()
         return A, B
