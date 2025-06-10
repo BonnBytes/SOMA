@@ -30,11 +30,11 @@ def load_file(fname: str) -> np.ndarray:
 def main():
     """Plot code."""
     r = 32
-    random_mse = load_file(f"./r_mse_{r}_ut_init_z.pkl")[:25, :]
-    wavelet_mse = load_file(f"./w_mse_{r}_ut_init_o.pkl")[:25, :]
-    fourier_mse = load_file(f"./f_mse_{r}_ut_init_z.pkl")[:25, :]
-    welsh_mse = load_file(f"./h_mse_{r}_ut_init_z.pkl")[:25, :]
-    hippo_mse = load_file(f"./m_mse_{r}_ut_init_z.pkl")[:25, :]
+    random_mse = load_file(f"./r_mse_{r}_ut_init_z.pkl")
+    wavelet_mse = load_file(f"./w_mse_{r}_ut_init_z.pkl")
+    fourier_mse = load_file(f"./f_mse_{r}_ut_init_z.pkl")
+    welsh_mse = load_file(f"./h_mse_{r}_ut_init_z.pkl")
+    hippo_mse = load_file(f"./m_mse_{r}_ut_init_z.pkl")
 
     print(
         random_mse.shape,
@@ -128,6 +128,34 @@ def rank_plots():
     plt.close()
 
 
+def init_plots():
+    """Init ranks."""
+    init_scheme = "m"
+    r = 32
+    lambda_init = ["z", "o", "r"]
+    inits = ["Zeros", "Ones", "Random"]
+    files = []
+    colors = ["r", "g", "b"]
+    for it in lambda_init:
+        file_ = load_file(f"./{init_scheme}_mse_{r}_ut_init_{it}.pkl")
+        files.append(file_)
+    mean_vals = [np.mean(vals, axis=0) for vals in files]
+    plt.figure()
+    for idx in range(len(files)):
+        x = np.arange(0, len(mean_vals[idx]))
+        plt.plot(x, mean_vals[idx], c=colors[idx], label=f"-{inits[idx]}")
+    plt.legend()
+    plt.xlabel("Iterations")
+    plt.ylabel("MSE")
+    plt.savefig(
+        f"{init_scheme}_mse_r_32.png",
+        dpi=600,
+        bbox_inches="tight",
+    )
+    plt.close()
+
+
 if __name__ == "__main__":
     main()
     # rank_plots()
+    # init_plots()
