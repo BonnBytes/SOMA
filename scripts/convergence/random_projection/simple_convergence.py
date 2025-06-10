@@ -4,7 +4,8 @@ import pickle
 import random
 from argparse import ArgumentParser, Namespace
 from copy import deepcopy
-from typing import Optional, Tuple
+from functools import partial
+from typing import Any, Optional, Tuple
 
 import numpy as np
 import torch as th
@@ -12,7 +13,7 @@ import torch.nn as nn
 from ptwt.matmul_transform import construct_boundary_a, construct_boundary_s
 from ptwt.sparse_math import cat_sparse_identity_matrix
 from scipy.linalg import hadamard
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 
 def setseed(seed: int) -> None:
@@ -108,34 +109,27 @@ class OrthoFit(nn.Module):
             init_fn = self.hippo_inits
         self.A, self.B = init_fn()
         self.lambda_d = nn.Parameter(th.empty(rank), requires_grad=True)
+        if init_scheme == "f":
+            full_rank = full_rank // 2 + 1
         self.ut_lambdas = th.zeros(full_rank - rank)
         if untrain_lambda_init == "o":
             self.ut_lambdas = th.ones(full_rank - rank)
         elif untrain_lambda_init == "r":
             self.ut_lambdas = th.randn(full_rank - rank)
-        self.lambda_b = nn.Parameter(th.empty(full_rank), requires_grad=True)
+        self.lambda_b = nn.Parameter(
+            th.empty(self.full_rank), requires_grad=True
+        )
         self.init_scheme = init_scheme
 
-    def fourier_inits(self) -> Tuple[th.Tensor, th.Tensor]:
+    def fourier_inits(self) -> Tuple[Any, Any]:
         """Fourier initialsiation.
 
         Returns:
             Tuple[th.Tensor, th.Tensor]: Fourier intialised A and B matrices.
         """
         print("Fourier init")
-
-        def fourier_matrix(x):
-            indices = th.arange(x)
-            real_part = th.cos(-2 * th.pi * th.outer(indices, indices) / x)
-            imag_part = th.sin(-2 * th.pi * th.outer(indices, indices) / x)
-            return th.complex(real_part, imag_part)
-
-        def inv_fourier(x):
-            Q = fourier_matrix(x)
-            return th.conj(Q.T) / x
-
-        A = fourier_matrix(self.full_rank)
-        B = inv_fourier(self.full_rank)
+        A = partial(th.fft.rfft, norm="ortho")
+        B = partial(th.fft.irfft2, norm="ortho")
         return A, B
 
     def __construct_wavelet_matrices(
@@ -188,7 +182,7 @@ class OrthoFit(nn.Module):
             Tuple[th.Tensor, th.Tensor]: Wavelet intialised A and B matrices.
         """
         print("Wavelet init")
-        transform_level = 4
+        transform_level = 7
         A = self.__construct_wavelet_matrices(transform_level, "a").to_dense()
         B = self.__construct_wavelet_matrices(transform_level, "s").to_dense()
         return A, B
@@ -270,11 +264,10 @@ class OrthoFit(nn.Module):
         Returns:
             th.Tensor: Ortho-VeRA output.
         """
+        if self.init_scheme == "f":
+            return self.__fft_forward(x)
         device = x.device
-        if self.init_scheme != "f":
-            dt = th.float32
-        elif self.init_scheme == "f":
-            dt = th.cfloat
+        dt = th.float32
         l_d = th.diag(
             th.cat(
                 [
@@ -291,9 +284,35 @@ class OrthoFit(nn.Module):
             @ self.A.to(device).to(dtype=dt)
         )
         y_out = H @ x.to(dtype=dt)
-        if self.init_scheme == "f":
-            return y_out.real.to(th.float32)
         return y_out.to(th.float32)
+
+    def __fft_forward(self, x: th.Tensor) -> th.Tensor:
+        """FFT Forward pass.
+
+        Args:
+            x (th.Tensor): Input Tensor.
+
+        Returns:
+            th.Tensor: Ortho-VERA output
+        """
+        device = x.device
+        dt_cf = th.cfloat
+        dt_32 = th.float32
+        temp = self.A(x.T)
+        _, u = temp.shape
+        l_d = th.diag(
+            th.cat(
+                [
+                    self.lambda_d.to(dtype=dt_cf),
+                    self.ut_lambdas.to(dtype=dt_cf).to(device),
+                ]
+            )
+        ).to(dtype=dt_cf)
+        temp = temp @ l_d
+        temp = self.B(temp)
+        l_b = th.diag(self.lambda_b)
+        y_out = temp @ l_b.to(dtype=dt_32)
+        return y_out.T
 
 
 def main(args: Namespace):
@@ -305,7 +324,7 @@ def main(args: Namespace):
     device = th.device("cuda") if th.cuda.is_available() else th.device("cpu")
     print(f"Using backend: {device}")
     seed_mses = []
-    for seed in range(0, 10):
+    for seed in range(0, 25):
         print(f"Seed: {seed}")
         setseed(seed)
         mses = []
@@ -324,6 +343,7 @@ def main(args: Namespace):
         loss = nn.MSELoss()
         opt = th.optim.Adam(model.parameters(), lr=1e-3)
         for epoch in (pbar := tqdm(range(0, args.iterations))):
+            # for epoch in range(0, args.iterations):
             opt.zero_grad()
             out = model(x)
             loss_val = loss(out, y)
@@ -332,6 +352,7 @@ def main(args: Namespace):
             mses.append(loss_val.item())
             pbar.set_description(f"Epoch: {epoch} -- Loss: {loss_val.item()}")
         seed_mses.append(mses)
+
     with open(
         f"{args.init}_mse_{args.rank}_ut_init_{args.untrain_lambda_init}.pkl",
         "wb",
