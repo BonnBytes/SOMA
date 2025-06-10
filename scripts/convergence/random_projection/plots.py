@@ -50,7 +50,7 @@ def main():
     we_mean, we_std = np.mean(welsh_mse, axis=0), np.std(welsh_mse, axis=0)
     m_mean, m_std = np.mean(hippo_mse, axis=0), np.std(hippo_mse, axis=0)
 
-    plt.figure()
+    plt.figure(figsize=(15, 6))
     plt.plot(np.arange(0, len(r_mean)), r_mean, c="b", label="Random matrix")
     plt.plot(np.arange(0, len(w_mean)), w_mean, c="g", label="Wavelet basis")
     plt.plot(np.arange(0, len(f_mean)), f_mean, c="k", label="Fourier basis")
@@ -95,7 +95,7 @@ def main():
     )
     plt.legend()
     plt.xlabel("Iterations")
-    plt.ylabel("log(MSE)")
+    plt.ylabel("MSE")
     plt.savefig(f"all_initialisations_{r}.png", dpi=600, bbox_inches="tight")
     plt.close()
 
