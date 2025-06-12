@@ -2,19 +2,19 @@
 
 # Format code
 format:
-	uv run isort scripts/convergence/random_projection tests/test_randomprojection.py
-	uv run black scripts/convergence/random_projection tests/test_randomprojection.py
+	uv run isort scripts/toy_random_projection tests/test_randomprojection.py
+	uv run black scripts/toy_random_projection tests/test_randomprojection.py
 
 # Check formatting (without making changes)  
 check-format:
-	uv run isort --check-only --diff scripts/convergence/random_projection tests/test_randomprojection.py
-	uv run black --check --diff scripts/convergence/random_projection tests/test_randomprojection.py
+	uv run isort --check-only --diff scripts/toy_random_projection tests/test_randomprojection.py
+	uv run black --check --diff scripts/toy_random_projection tests/test_randomprojection.py
 
 lint:
-	uv run flake8 scripts/convergence/random_projection/ tests/test_randomprojection.py
+	uv run flake8 scripts/toy_random_projection/ tests/test_randomprojection.py
 
 typing:
-	uv run mypy scripts/convergence/random_projection tests/test_randomprojection.py
+	uv run mypy scripts/toy_random_projection tests/test_randomprojection.py
 
 test:
 	uv run pytest

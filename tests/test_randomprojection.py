@@ -5,7 +5,7 @@ from typing import Tuple
 import pytest
 import torch as th
 
-from scripts.convergence.random_projection.simple_convergence import (
+from scripts.toy_random_projection.simple_convergence import (
     FitModel,
     OrthoFit,
 )
