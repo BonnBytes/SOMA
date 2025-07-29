@@ -23,5 +23,8 @@ test:
 check-all:
 	uv run pre-commit run --all-files
 
+install-precommit:
+	uv run pre-commit install --hook-type pre-push
+
 all: format test lint typing
 	@echo "All checks passed!"
