@@ -1,9 +1,10 @@
-import numpy as np
 import h5py
+import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
 from PIL import Image
+from torch.utils.data import DataLoader, Dataset
+from torchvision import transforms
+
 
 class PCAMDataset(Dataset):
     def __init__(self, x_data, y_data, transform=None):
@@ -23,7 +24,6 @@ class PCAMDataset(Dataset):
     def __getitem__(self, idx):
         image = Image.fromarray(self.x_data[idx]).convert("RGB")
         label = int(self.y_data[idx, 0, 0, 0])
-
 
         if self.transform:
             image = self.transform(image)

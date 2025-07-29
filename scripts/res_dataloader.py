@@ -1,7 +1,9 @@
 import os
+
 from PIL import Image
+from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
-from torch.utils.data import Dataset, DataLoader
+
 
 class RESISC45Dataset(Dataset):
     def __init__(self, root_dir, transform=None):
@@ -13,7 +15,9 @@ class RESISC45Dataset(Dataset):
         self.root_dir = root_dir
         self.transform = transform
         self.classes = sorted(os.listdir(root_dir))  # List of class names
-        self.class_to_idx = {cls_name: idx for idx, cls_name in enumerate(self.classes)}
+        self.class_to_idx = {
+            cls_name: idx for idx, cls_name in enumerate(self.classes)
+        }
 
         self.image_paths = []
         self.labels = []

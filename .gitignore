@@ -169,3 +169,10 @@ cython_debug/
 
 # Omit CIFAR100 data from git
 data/
+*.pkl
+*.npz
+.python-version
+*.pth
+*.pt
+.vscode
+*.png

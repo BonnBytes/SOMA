@@ -1,0 +1,96 @@
+[project]
+name = "ortho-vera"
+version = "0.1.0"
+description = "Orthogonal VeRA initialisation lead to faster convergence."
+readme = "README.md"
+requires-python = "==3.12.10"
+dependencies = [
+    "matplotlib>=3.10.3",
+    "numpy==1.26.4",
+    "ptwt>=0.1.9",
+    "pytest>=8.3.5",
+    "scipy>=1.15.3",
+    "tqdm>=4.67.1",
+    "transformers>=4.52.4",
+]
+
+[project.optional-dependencies]
+cpu = [
+  "torch==2.6",
+  "torchvision==0.21",
+  "torchaudio==2.6",
+]
+cu124 = [
+  "torch==2.6",
+  "torchvision==0.21",
+  "torchaudio==2.6",
+]
+
+[tool.uv]
+conflicts = [
+  [
+    { extra = "cpu" },
+    { extra = "cu124" },
+  ],
+]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-cu124", extra = "cu124" },
+]
+torchvision = [
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-cu124", extra = "cu124" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+priority = "primary"
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+
+[tool.isort]
+profile = "black"
+py_version = 312
+
+[tool.black]
+line-length = 79
+target-version = ['py312']
+
+[tool.mypy]
+python_version = "3.12"  # or your target Python version
+install_types = true
+non_interactive = true
+ignore_missing_imports = true
+strict_optional = false
+warn_return_any = false
+implicit_reexport = true
+allow_untyped_calls = true
+explicit_package_bases = true
+
+[dependency-groups]
+dev = [
+    "black>=25.1.0",
+    "darglint>=1.8.1",
+    "flake8>=7.2.0",
+    "flake8-black>=0.3.6",
+    "flake8-broken-line>=1.0.0",
+    "flake8-bugbear>=24.12.12",
+    "flake8-docstrings>=1.7.0",
+    "isort>=6.0.1",
+    "mypy>=1.16.0",
+    "pep8-naming>=0.15.1",
+    "pre-commit>=4.2.0",
+    "pydocstyle>=6.3.0",
+    "types-pyyaml>=6.0.12.20250516",
+    "types-requests>=2.32.0.20250602",
+    "types-simplejson>=3.20.0.20250326",
+    "types-tabulate>=0.9.0.20241207",
+]
