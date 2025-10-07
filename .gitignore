@@ -176,3 +176,4 @@ data/
 *.pt
 .vscode
 *.png
+.DS_Store
