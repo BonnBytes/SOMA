@@ -9,7 +9,7 @@ from ptwt.sparse_math import cat_sparse_identity_matrix
 
 
 def construct_wavelet_matrices(
-    transform_level: int, matrix_type: str, out_feats: int
+    transform_level: int, matrix_type: str, out_feats: int, wavelet: str
 ) -> th.Tensor:
     """Construct multi-level wavelet transformation matrix.
 
@@ -17,6 +17,7 @@ def construct_wavelet_matrices(
         transform_level (int): Transformation level.
         matrix_type (str): Wavelet matrix type. Analysis or Synthesis.
         out_feats (int): Base layer output size.
+        wavelet (str): Wavelet to use.
 
     Returns:
         th.Tensor: Multi-level wavelet basis matrix.

@@ -1,12 +1,12 @@
 """Vera Linear Layer."""
 
 from functools import partial
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, Union
 
 import torch as th
 from scipy import hadamard
 
-from .utils import create_hippo, next_pow
+from .utils import construct_wavelet_matrices, create_hippo, next_pow
 from .vera_base import VeraBase
 
 
@@ -32,17 +32,19 @@ class VeraLinear(VeraBase):
         if self.__init_scheme not in ["f", "w", "h", "m"]:
             raise ValueError("Improper init scheme")
         self.__ut_lambda_init = config["ut_lambda"]
+        if self.__init_scheme == "w":
+            self.__wavelet = config["wavelet"]
+            self.__transform_level = config["transform_level"]
         self.update_layer()
 
-    def compute_bases(self) -> Tuple[Any, Any]:
+    def compute_bases(self) -> Tuple[Union[Any, th.Tensor], ...]:
         """Compute relevant bases matrices.
 
         Returns:
-            Tuple[Any, Any]: Tuple containing A and B matrices.
+            Tuple[Union[Any, th.Tensor], ...]: Tuple containing A and B matrices.
         """
         if self.__init_scheme == "w":
-            # return self.wavelet_bases()
-            return self.fourier_bases()
+            return self.wavelet_bases()
         elif self.__init_scheme == "h":
             return self.welsh_bases()
         elif self.__init_scheme == "m":
@@ -50,21 +52,35 @@ class VeraLinear(VeraBase):
         else:
             return self.fourier_bases()
 
-    def fourier_bases(self) -> Tuple[Any, Any]:
+    def wavelet_bases(self) -> Tuple[th.Tensor, ...]:
+        """Compute Wavelet bases.
+
+        Returns:
+            Tuple[th.Tensor, ...]: Tuple containing wavelet bases matrices.
+        """
+        a_mat = construct_wavelet_matrices(
+            self.__transform_level, "a", self.out_feat, self.__wavelet
+        ).to_dense()
+        b_mat = construct_wavelet_matrices(
+            self.__transform_level, "s", self.out_feat, self.__wavelet
+        ).to_dense()
+        return a_mat, b_mat
+
+    def fourier_bases(self) -> Tuple[Any, ...]:
         """Compute rFFT bases.
 
         Returns:
-            Tuple[Any, Any]: Tuple containing fourier matrices.
+            Tuple[Any, ...]: Tuple containing fourier matrices.
         """
         a_mat = partial(th.fft.rfft, norm="ortho")
         b_mat = partial(th.fft.irfft, norm="ortho")
         return a_mat, b_mat
 
-    def welsh_bases(self) -> Tuple[th.Tensor, th.Tensor]:
+    def welsh_bases(self) -> Tuple[th.Tensor, ...]:
         """Compute Wavelet transform bases.
 
         Returns:
-            Tuple[th.Tensor, th.Tensor]: Tuple containing wavelet matrices.
+            Tuple[th.Tensor, ...]: Tuple containing wavelet matrices.
         """
         power = next_pow(self.out_feat)
         A = th.from_numpy(hadamard(power))
@@ -73,11 +89,11 @@ class VeraLinear(VeraBase):
         B = A.T
         return A, B
 
-    def hippo_bases(self) -> Tuple[th.Tensor, th.Tensor]:
+    def hippo_bases(self) -> Tuple[th.Tensor, ...]:
         """Compute Hippo bases.
 
         Returns:
-            Tuple[th.Tensor, th.Tensor]: Tuple containing Hippo matrices.
+            Tuple[th.Tensor, ...]: Tuple containing Hippo matrices.
         """
         A = create_hippo(self.out_feat)
         B = th.linalg.inv(A)
