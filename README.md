@@ -4,7 +4,7 @@
 We use UV for installation and packaging purpose. Run the following command to create virtual environment
 
 ```bash
-uv sync --extra cu124
+uv sync --extra cu126
 ```
 Note: For developers
 
