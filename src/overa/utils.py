@@ -91,3 +91,23 @@ def create_hippo(n: int) -> th.Tensor:
             elif i > k:
                 matrix[i, k] = ((2 * i + 1) ** 0.5) * ((2 * k + 1) ** 0.5)
     return matrix
+
+
+def split_qkv_weight(weight: th.Tensor) -> Tuple[th.Tensor, ...]:
+    """Split QKV tensor.
+
+    Args:
+        weight (th.Tensor): Pretraiend weight tensor.
+
+    Raises:
+        ValueError: Error if wrong linear weight is provided.
+
+    Returns:
+        Tuple[th.Tensor, ...]: Unbinded tuple containing Q, K, and V matrices.
+    """
+    out_, in_ = weight.shape
+    if out_ != 3 * in_:
+        raise ValueError("Improper weight tensor.")
+    new_weight = weight.reshape((3, in_, in_))
+    q, k, v = th.unbind(new_weight, dim=0)
+    return q, k, v

@@ -2,19 +2,19 @@
 
 # Format code
 format:
-	uv run isort scripts/toy_random_projection src/ tests/test_randomprojection.py
-	uv run black scripts/toy_random_projection src/ tests/test_randomprojection.py
+	uv run isort scripts/toy_random_projection src/ tests/test_*.py
+	uv run black scripts/toy_random_projection src/ tests/test_*.py
 
 # Check formatting (without making changes)  
 check-format:
-	uv run isort --check-only --diff scripts/toy_random_projection src/ tests/test_randomprojection.py
-	uv run black --check --diff scripts/toy_random_projection src/ tests/test_randomprojection.py
+	uv run isort --check-only --diff scripts/toy_random_projection src/ tests/test_*.py
+	uv run black --check --diff scripts/toy_random_projection src/ tests/test_*.py
 
 lint:
-	uv run flake8 scripts/toy_random_projection/ src/ tests/test_randomprojection.py
+	uv run flake8 scripts/toy_random_projection/ src/ tests/test_*.py
 
 typing:
-	uv run mypy scripts/toy_random_projection src/ tests/test_randomprojection.py
+	uv run mypy scripts/toy_random_projection src/ tests/test_*.py
 
 test:
 	uv run pytest
