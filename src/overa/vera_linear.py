@@ -1,7 +1,7 @@
 """Vera Linear Layer."""
 
 from functools import partial
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Callable, Dict, Tuple, Union
 
 import torch as th
 from scipy import hadamard
@@ -37,11 +37,11 @@ class VeraLinear(VeraBase):
             self.__transform_level = config["transform_level"]
         self.update_layer()
 
-    def compute_bases(self) -> Tuple[Union[Any, th.Tensor], ...]:
+    def compute_bases(self) -> Tuple[Union[Callable, th.Tensor], ...]:
         """Compute relevant bases matrices.
 
         Returns:
-            Tuple[Union[Any, th.Tensor], ...]: Tuple containing A and B matrices.
+            Tuple[Union[Callable, th.Tensor], ...]: Tuple containing A and B matrices.
         """
         if self.__init_scheme == "w":
             return self.wavelet_bases()
@@ -66,11 +66,11 @@ class VeraLinear(VeraBase):
         ).to_dense()
         return a_mat, b_mat
 
-    def fourier_bases(self) -> Tuple[Any, ...]:
+    def fourier_bases(self) -> Tuple[Callable, ...]:
         """Compute rFFT bases.
 
         Returns:
-            Tuple[Any, ...]: Tuple containing fourier matrices.
+            Tuple[Callable, ...]: Tuple containing fourier matrices.
         """
         a_mat = partial(th.fft.rfft, norm="ortho")
         b_mat = partial(th.fft.irfft, norm="ortho")
