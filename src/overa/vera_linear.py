@@ -6,7 +6,12 @@ from typing import Any, Callable, Dict, Tuple, Union
 import torch as th
 from scipy import hadamard
 
-from .utils import construct_wavelet_matrices, create_hippo, next_pow
+from .utils import (
+    construct_wavelet_matrices,
+    create_hippo,
+    next_pow,
+    split_qkv_weight,
+)
 from .vera_base import VeraBase
 
 
@@ -178,3 +183,61 @@ class VeraLinear(VeraBase):
         else:
             vera_result = self.__ortho_forward(x)
         return result + self.alpha * vera_result
+
+
+class VeraMergedLinear(th.nn.Module):
+    """Vera Merged Linear Layer."""
+
+    def __init__(
+        self, base_layer: th.nn.Module, config: Dict[str, Any]
+    ) -> None:
+        """Process and intialise OVeRA layers.
+
+        Args:
+            base_layer (th.nn.Module): Base linear layer.
+            config (Dict[str, Any]): Ortho-VeRA configutation.
+        """
+        super(VeraMergedLinear, self).__init__()
+        _, embed_dim = th.tensor(base_layer.weight.data).shape
+        self.w_q = th.nn.Linear(
+            in_features=embed_dim, out_features=embed_dim, bias=False
+        )
+        self.w_k = th.nn.Linear(
+            in_features=embed_dim, out_features=embed_dim, bias=False
+        )
+        self.w_v = th.nn.Linear(
+            in_features=embed_dim, out_features=embed_dim, bias=False
+        )
+        self.__process_qkv_split(base_layer)
+        self.vera_q = VeraLinear(base_layer=self.w_q, config=config)
+        self.vera_k = VeraLinear(base_layer=self.w_k, config=config)
+        self.vera_v = VeraLinear(base_layer=self.w_v, config=config)
+
+    def __process_qkv_split(self, layer: th.nn.Module) -> None:
+        """Split and intialise QKV layers into individual layers.
+
+        Args:
+            layer (th.nn.Module): Base layer.
+        """
+        base_weight = th.tensor(
+            layer.weight.data
+        )  # convert to tensor to make mypy happy.
+        w_q, w_k, w_v = split_qkv_weight(base_weight)
+        self.w_q.weight.data = w_q
+        self.w_k.weight.data = w_k
+        self.w_v.weight.data = w_v
+
+    def forward(self, x: th.Tensor) -> th.Tensor:
+        """Forward pass.
+
+        Args:
+            x (th.Tensor): Input tensor.
+
+        Returns:
+            th.Tensor: Vera merged output.
+        """
+        q = self.vera_q(x)
+        k = self.vera_k(x)
+        v = self.vera_v(x)
+        qkv = th.cat([q, k, v], dim=-1)
+        return qkv
