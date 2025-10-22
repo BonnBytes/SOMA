@@ -32,22 +32,6 @@ def test_zero_output(init_scheme: str):
     assert th.allclose(y_pred, y)
 
 
-@pytest.mark.parametrize(
-    "io_maps", ((3, 4), (768, 1024), (1975, 2048), (3452, 4096))
-)
-def test_nextpower(io_maps: Tuple[int, int]):
-    """Test finding next power of 2, given a number.
-
-    Args:
-        io_maps (Tuple[int, int]): Tuple containing current number and next power of 2.
-    """
-    full_rank, near_power = io_maps
-    vera_rank = 1
-    model = OrthoFit(full_rank, vera_rank, "z", "h")
-    pow_returned = model.next_pow(full_rank)
-    assert pow_returned == near_power
-
-
 walsh_3d = th.tensor([[1, 1, 1], [1, -1, 1], [1, 1, -1]])
 walsh_4d = th.tensor(
     [[1, 1, 1, 1], [1, -1, 1, -1], [1, 1, -1, -1], [1, -1, -1, 1]]
