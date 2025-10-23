@@ -4,9 +4,10 @@
 We use UV for installation and packaging purpose. Run the following command to create virtual environment
 
 ```bash
-uv sync --extra cu124
+uv sync --extra cu126   # for CUDA
+uv sync --extra cpu     # for CPU
 ```
-Note: For developers
+Note:
 
 To install precommit hook checks run the following
 ```bash

@@ -1,9 +1,9 @@
 [project]
 name = "ortho-vera"
 version = "0.1.0"
-description = "Orthogonal VeRA initialisation lead to faster convergence."
+description = "Orthogonal VeRA initialisation."
 readme = "README.md"
-requires-python = "==3.12.10"
+requires-python = "==3.13.3"
 dependencies = [
     "matplotlib>=3.10.3",
     "numpy==1.26.4",
@@ -16,32 +16,32 @@ dependencies = [
 
 [project.optional-dependencies]
 cpu = [
-  "torch==2.6",
-  "torchvision==0.21",
-  "torchaudio==2.6",
+  "torch==2.8",
+  "torchvision==0.23",
+  "torchaudio==2.8",
 ]
-cu124 = [
-  "torch==2.6",
-  "torchvision==0.21",
-  "torchaudio==2.6",
+cu126 = [
+  "torch==2.8",
+  "torchvision==0.23",
+  "torchaudio==2.8",
 ]
 
 [tool.uv]
 conflicts = [
   [
     { extra = "cpu" },
-    { extra = "cu124" },
+    { extra = "cu126" },
   ],
 ]
 
 [tool.uv.sources]
 torch = [
   { index = "pytorch-cpu", extra = "cpu" },
-  { index = "pytorch-cu124", extra = "cu124" },
+  { index = "pytorch-cu126", extra = "cu126" },
 ]
 torchvision = [
   { index = "pytorch-cpu", extra = "cpu" },
-  { index = "pytorch-cu124", extra = "cu124" },
+  { index = "pytorch-cu126", extra = "cu126" },
 ]
 
 [[tool.uv.index]]
@@ -51,21 +51,21 @@ explicit = true
 priority = "primary"
 
 [[tool.uv.index]]
-name = "pytorch-cu124"
-url = "https://download.pytorch.org/whl/cu124"
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
 explicit = true
 
 
 [tool.isort]
 profile = "black"
-py_version = 312
+py_version = 313
 
 [tool.black]
 line-length = 79
-target-version = ['py312']
+target-version = ['py313']
 
 [tool.mypy]
-python_version = "3.12"  # or your target Python version
+python_version = "3.13"  # or your target Python version
 install_types = true
 non_interactive = true
 ignore_missing_imports = true
