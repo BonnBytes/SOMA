@@ -6,36 +6,37 @@ repos:
         entry: uv run isort
         language: system
         args: ["--profile", "black"]
-        files: ^(scripts/toy_random_projection/|tests/test_randomprojection\.py)
+        files: ^(scripts/toy_random_projection/|src/|tests/test_*.py)
         types: [python]
 
       - id: black  
         name: black
         entry: uv run black
         language: system 
-        args: ["--target-version", "py312"]
-        files: ^(scripts/toy_random_projection/|tests/test_randomprojection\.py)
+        args: ["--target-version", "py313"]
+        files: ^(scripts/toy_random_projection/|src/|tests/test_*.py)
         types: [python]
 
       - id: flake8
         name: flake8
         entry: uv run flake8
         language: system
-        files: ^(scripts/toy_random_projection/|tests/test_randomprojection\.py)$
+        files: ^(scripts/toy_random_projection/|src/|tests/test_*.py)
         types: [python]
 
       - id: mypy
         name: mypy
         entry: uv run mypy
         language: system
-        files: ^(scripts/toy_random_projection/|tests/test_randomprojection\.py)
+        files: ^(scripts/toy_random_projection/|src/|tests/test_*.py)
         types: [python]
         pass_filenames: false
+        always_run: true
 
       - id: pytest
         name: pytest
         entry: uv run pytest
         language: system
-        files: ^tests/test_randomprojection\.py$
+        files: ^tests/test_*.py$
         pass_filenames: false
         always_run: true
