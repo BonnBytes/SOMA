@@ -42,14 +42,15 @@ class VeraBase(ABC, th.nn.Module):
             return (self.base_layer.in_features, self.base_layer.out_features)
         raise ValueError("Only Linear layer is supported.")
 
-    def __move_to_device(self):
+    def move_to_device(self):
         """Move VeRA parameters to model device."""
         device = self.base_layer.weight.device
         self.vera_lambda_d = self.vera_lambda_d.to(device)
         self.vera_lambda_b = self.vera_lambda_b.to(device)
         self.fixed_lambda_d = self.fixed_lambda_d.to(device)
-        self.A_vera = self.A_vera.to(device)
-        self.B_vera = self.B_vera.to(device)
+        if isinstance(self.A_vera, th.Tensor):
+            self.A_vera = self.A_vera.to(device)
+            self.B_vera = self.B_vera.to(device)
 
     @abstractmethod
     def compute_bases(self):

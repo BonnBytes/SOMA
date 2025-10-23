@@ -4,7 +4,7 @@ from functools import partial
 from typing import Any, Callable, Dict, Tuple, Union
 
 import torch as th
-from scipy import hadamard
+from scipy.linalg import hadamard
 
 from .utils import (
     construct_wavelet_matrices,
@@ -29,6 +29,7 @@ class VeraLinear(VeraBase):
 
         Raises:
             ValueError: Error if ortho init is outside of selected ones.
+            ValueError: Error if untrained lambdas as not properly intialised.
         """
         super(VeraLinear, self).__init__(base_layer)
         self.rank = config["rank"]
@@ -37,6 +38,8 @@ class VeraLinear(VeraBase):
         if self.__init_scheme not in ["f", "w", "h", "m"]:
             raise ValueError("Improper init scheme")
         self.__ut_lambda_init = config["ut_lambda"]
+        if self.__ut_lambda_init not in ["z", "o", "r"]:
+            raise ValueError("Improper untrained lambda init scheme")
         if self.__init_scheme == "w":
             self.__wavelet = config["wavelet"]
             self.__transform_level = config["transform_level"]
@@ -113,11 +116,16 @@ class VeraLinear(VeraBase):
             th.empty(self.rank), requires_grad=True
         )
         th.nn.init.normal_(self.vera_lambda_d)
+        init_fn = th.zeros
+        if self.__ut_lambda_init == "o":
+            init_fn = th.ones
+        elif self.__ut_lambda_init == "r":
+            init_fn = th.randn
         self.fixed_lambda_d = th.nn.Parameter(
-            th.zeros(self.out_feat - self.rank), requires_grad=False
+            init_fn(self.out_feat - self.rank), requires_grad=False
         )
         self.A_vera, self.B_vera = self.compute_bases()
-        self.__move_to_device()
+        self.move_to_device()
 
     def __fft_forward(self, x: th.Tensor) -> th.Tensor:
         """FFT-VeRA forward pass.
@@ -129,8 +137,12 @@ class VeraLinear(VeraBase):
             th.Tensor: VeRA-FFT Output.
         """
         dt_cf = th.cfloat
-        temp = self.A_vera(x.T)
-        _, u = temp.shape
+        bs, p, e = x.shape
+        temp = self.A_vera(x)
+        _, _, fe = temp.shape
+        # Add zeros to compensate loss after realFFT
+        zeros_ = th.zeros((bs, p, e - fe))
+        temp = th.cat([temp, zeros_], dim=-1)
         l_d = th.diag(
             th.cat(
                 [
@@ -140,10 +152,12 @@ class VeraLinear(VeraBase):
             )
         ).to(dtype=dt_cf)
         temp = temp @ l_d
+        # Remove added zeros for irealFFT
+        temp = temp[:, :, :fe]
         temp = self.B_vera(temp)
         l_b = th.diag(self.vera_lambda_b)
         y_out = temp @ l_b.to(dtype=x.dtype)
-        return y_out.T
+        return y_out
 
     def __ortho_forward(self, x: th.Tensor) -> th.Tensor:
         """Orthogonal forward pass.
@@ -165,7 +179,7 @@ class VeraLinear(VeraBase):
         ).to(dtype=dt)
         l_b = th.diag(self.vera_lambda_b.to(dtype=dt)).to(dtype=dt)
         H = l_b @ self.B_vera.to(dtype=dt) @ l_d @ self.A_vera.to(dtype=dt)
-        y_out = H @ x.to(dtype=dt)
+        y_out = x @ H.T
         return y_out
 
     def forward(self, x: th.Tensor, *args, **kwargs) -> th.Tensor:
@@ -222,6 +236,7 @@ class VeraMergedLinear(th.nn.Module):
         base_weight = th.tensor(
             layer.weight.data
         )  # convert to tensor to make mypy happy.
+        # base_weight = layer.weight.detach().clone()
         w_q, w_k, w_v = split_qkv_weight(base_weight)
         self.w_q.weight.data = w_q
         self.w_k.weight.data = w_k
