@@ -1,8 +1,10 @@
 """Utils file."""
 
+import random
 from copy import deepcopy
-from typing import Tuple
+from typing import Optional, Tuple
 
+import numpy as np
 import torch as th
 from ptwt.matmul_transform import construct_boundary_a, construct_boundary_s
 from ptwt.sparse_math import cat_sparse_identity_matrix
@@ -111,3 +113,17 @@ def split_qkv_weight(weight: th.Tensor) -> Tuple[th.Tensor, ...]:
     new_weight = weight.reshape((3, in_, in_))
     q, k, v = th.unbind(new_weight, dim=0)
     return q, k, v
+
+
+def set_seed(seed: Optional[int] = 60):
+    """Set global seeds.
+
+    Args:
+        seed (int, optional): seed value. Defaults to 60.
+    """
+    np.random.seed(seed)
+    random.seed(seed)
+    th.manual_seed(seed)
+    th.cuda.manual_seed_all(seed)
+    th.backends.cudnn.deterministic = True
+    th.backends.cudnn.benchmark = True
