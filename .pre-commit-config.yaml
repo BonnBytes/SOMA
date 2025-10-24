@@ -8,8 +8,6 @@ repos:
         args: ["--profile", "black"]
         files: ^(scripts/toy_random_projection/|src/|tests/)
         types: [python]
-        pass_filenames: true
-        always_run: true
 
       - id: black  
         name: black
@@ -18,8 +16,6 @@ repos:
         args: ["--target-version", "py313"]
         files: ^(scripts/toy_random_projection/|src/|tests/)
         types: [python]
-        pass_filenames: true
-        always_run: true
 
       - id: flake8
         name: flake8
@@ -27,8 +23,6 @@ repos:
         language: system
         files: ^(scripts/toy_random_projection/|src/|tests/)
         types: [python]
-        pass_filenames: true
-        always_run: true
 
       - id: mypy
         name: mypy
@@ -37,7 +31,6 @@ repos:
         files: ^(scripts/toy_random_projection/|src/|tests/)$
         types: [python]
         pass_filenames: false
-        always_run: true
 
       - id: pytest
         name: pytest
