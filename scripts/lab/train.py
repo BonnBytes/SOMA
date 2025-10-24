@@ -13,8 +13,8 @@ import torch.nn as nn
 import torch.optim as optim
 from avalanche.evaluation.metrics.accuracy import Accuracy
 from layers.merged import BaseMergedLinear as BaseMerged
-from pcam_dataloader import PCAMDataset
-from res_dataloader import RESISC45Dataset
+from scripts.lab.pcam_dataloader import PCAMDataset
+from scripts.lab.res_dataloader import RESISC45Dataset
 from timm import create_model
 from timm.scheduler import CosineLRScheduler
 from torch.nn.init import _calculate_correct_fan
