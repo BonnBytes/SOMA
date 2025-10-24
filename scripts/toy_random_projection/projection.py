@@ -110,7 +110,7 @@ def train(args: Namespace):
     #     device = th.device("mps")
     print(f"Using backend: {device}")
     seed_mses = []
-    for seed in range(0, 10):
+    for seed in range(0, 25):
         print(f"Seed: {seed}")
         set_seed(seed)
         mses = []
