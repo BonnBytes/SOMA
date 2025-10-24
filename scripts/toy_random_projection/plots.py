@@ -50,52 +50,62 @@ def main():
     we_mean, we_std = np.mean(welsh_mse, axis=0), np.std(welsh_mse, axis=0)
     m_mean, m_std = np.mean(hippo_mse, axis=0), np.std(hippo_mse, axis=0)
 
-    plt.figure(figsize=(15, 6))
-    plt.plot(np.arange(0, len(r_mean)), r_mean, c="b", label="Random matrix")
-    plt.plot(np.arange(0, len(w_mean)), w_mean, c="g", label="Wavelet basis")
-    plt.plot(np.arange(0, len(f_mean)), f_mean, c="k", label="Fourier basis")
-    plt.plot(
-        np.arange(0, len(we_mean)), we_mean, c="r", label="Hadamard basis"
-    )
-    plt.plot(np.arange(0, len(m_mean)), m_mean, c="c", label="Hippo basis")
-    plt.fill_between(
+    _, ax = plt.subplots()
+    ax.plot(np.arange(0, len(r_mean)), r_mean, c="b", label="Random matrix")
+    ax.plot(np.arange(0, len(w_mean)), w_mean, c="g", label="Wavelet basis")
+    ax.plot(np.arange(0, len(f_mean)), f_mean, c="k", label="Fourier basis")
+    ax.plot(np.arange(0, len(we_mean)), we_mean, c="r", label="Hadamard basis")
+    ax.plot(np.arange(0, len(m_mean)), m_mean, c="c", label="Hippo basis")
+    ax.fill_between(
         np.arange(0, len(r_mean)),
         r_mean - r_std,
         r_mean + r_std,
         color="b",
         alpha=0.3,
     )
-    plt.fill_between(
+    ax.fill_between(
         np.arange(0, len(w_mean)),
         w_mean - w_std,
         w_mean + w_std,
         color="g",
         alpha=0.3,
     )
-    plt.fill_between(
+    ax.fill_between(
         np.arange(0, len(f_mean)),
         f_mean - f_std,
         f_mean + f_std,
         color="y",
         alpha=0.3,
     )
-    plt.fill_between(
+    ax.fill_between(
         np.arange(0, len(we_mean)),
         we_mean - we_std,
         we_mean + we_std,
         color="r",
         alpha=0.3,
     )
-    plt.fill_between(
+    ax.fill_between(
         np.arange(0, len(m_mean)),
         m_mean - m_std,
         m_mean + m_std,
         color="c",
         alpha=0.3,
     )
-    plt.legend()
+    ax.legend()
+
+    axin = ax.inset_axes([0.48, 0.25, 0.5, 0.4])
+    axin.semilogy(np.arange(0, len(r_mean))[2000:], r_mean[2000:], c="b")
+    axin.semilogy(np.arange(0, len(w_mean))[2000:], w_mean[2000:], c="g")
+    axin.semilogy(np.arange(0, len(f_mean))[2000:], f_mean[2000:], c="k")
+    axin.semilogy(np.arange(0, len(we_mean))[2000:], we_mean[2000:], c="r")
+    axin.semilogy(np.arange(0, len(m_mean))[2000:], m_mean[2000:], c="c")
+    axin.tick_params(axis="both", labelsize=7)
+    # axin.grid()
+    ax.indicate_inset_zoom(axin, alpha=1.0, linewidth=2.0, edgecolor="k")
+
     plt.xlabel("Iterations")
     plt.ylabel("MSE")
+    plt.grid()
     plt.savefig(f"all_initialisations_{r}.png", dpi=600, bbox_inches="tight")
     plt.close()
 

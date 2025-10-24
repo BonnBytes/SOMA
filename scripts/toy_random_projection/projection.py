@@ -10,6 +10,8 @@ from tqdm.auto import tqdm
 from src.overa.utils import set_seed
 from src.overa.vera_linear import VeraLinear
 
+th.set_default_dtype(th.float64)
+
 
 class VeraModel(th.nn.Module):
     """Vera Model."""
@@ -101,10 +103,14 @@ def train(args: Namespace):
     Args:
         args (Namespace): CLI arguments.
     """
-    device = th.device("cuda") if th.cuda.is_available() else th.device("cpu")
+    device = th.device("cpu")
+    if th.cuda.is_available():
+        device = th.device("cuda")
+    # elif th.backends.mps.is_available():
+    #     device = th.device("mps")
     print(f"Using backend: {device}")
     seed_mses = []
-    for seed in range(0, 25):
+    for seed in range(0, 10):
         print(f"Seed: {seed}")
         set_seed(seed)
         mses = []
@@ -129,12 +135,17 @@ def train(args: Namespace):
         y, x = y.to(device), x.to(device)
         loss = th.nn.MSELoss()
         for name, param in model.named_parameters():
-            if "vera" in name:
-                print(name)
+            if "vera_lambda_b" in name or "vera_lambda_d" in name:
                 param.requires_grad = True
             else:
                 param.requires_grad = False
         opt = th.optim.Adam(model.parameters(), lr=1e-3)
+        num_params = sum(
+            param.numel()
+            for param in model.parameters()
+            if param.requires_grad
+        )
+        print(f"# Trainable Params: {num_params}")
         for epoch in (pbar := tqdm(range(0, args.iterations))):
             opt.zero_grad()
             out = model(x)
@@ -145,7 +156,7 @@ def train(args: Namespace):
             pbar.set_description(f"Epoch: {epoch} -- Loss: {loss_val.item()}")
         seed_mses.append(mses)
     with open(
-        f"{args.init}_mse_{args.rank}_ut_init_{args.untrain_lambda_init}.pkl",
+        f"{args.init}_mse_{args.rank}_ut_init_{args.ut_lambda}.pkl",
         "wb",
     ) as fp:
         pickle.dump(seed_mses, fp)

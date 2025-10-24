@@ -151,12 +151,12 @@ class VeraLinear(VeraBase):
                 ]
             )
         ).to(dtype=dt_cf)
-        temp = temp @ l_d
+        temp = temp.to(dtype=dt_cf) @ l_d
         # Remove added zeros for irealFFT
         temp = temp[:, :, :fe]
         temp = self.B_vera(temp)
         l_b = th.diag(self.vera_lambda_b)
-        y_out = temp @ l_b.to(dtype=x.dtype)
+        y_out = temp @ l_b.to(dtype=temp.dtype)
         return y_out
 
     def __ortho_forward(self, x: th.Tensor) -> th.Tensor:
