@@ -5,13 +5,12 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, Namespace
 import torch as th
 
 from timm.models import create_model
-from tqdm import tqdm
-import timm
 
 from src.overa.utils import set_seed
-from src.overa.vera_linear import VeraMergedLinear
 from dataloader import get_dl
 from data_config import CONFIG
+from utils import replace_qkv
+
 
 def _parse_args() -> Namespace:
     """Argument parser.
@@ -42,8 +41,8 @@ def _parse_args() -> Namespace:
     parser.add_argument(
         "--model",
         type=str,
-        default="vit_large_patch16_224_in21k",
-        choices=["vit_base_patch16_224_in21k", "vit_large_patch16_224_in21k"],
+        default="base",
+        choices=["base", "large"],
         help="Choice of model"
     )
     parser.add_argument(
@@ -96,10 +95,10 @@ def main():
     num_classes = data_config["n_c"]
     
     train_dl, test_dl = get_dl(args.dataset, args.data_seed)
-    if "large" in args.model:
-        vit = create_model(args.model, pretrained=True, drop_path_rate=0.1)
-    elif "base" in args.model:
-        vit = create_model(args.model, checkpoint_path="./ViT-B_16.npz", drop_path_rate=0.1)
+    if "large" == args.model:
+        vit = create_model("vit_large_patch16_224_in21k", pretrained=True, drop_path_rate=0.1)
+    elif "base" == args.model:
+        vit = create_model("vit_base_patch16_224_in21k", checkpoint_path="./ViT-B_16.npz", drop_path_rate=0.1)
 
     overa_config = {
         "rank": args.rank,
@@ -109,13 +108,14 @@ def main():
         "wavelet": args.wavelet,
         "transform_level": args.wavelet_level,
     }
-    # Replace ViT QKV with VeRAMergedLinear
+    vit = replace_qkv(vit, overa_config)
     vit.reset_classifier(num_classes)
     trainable = []
     total_param = 0
     for name, param in vit.named_parameters():
-        if "vera_lambda_d" in name or "vera_lambda_b" in name:
+        if "vera_lambda_d" in name or "vera_lambda_b" in name or "head" in name:
             param.requires_grad = True
+            print(name)
             if "head" not in name:
                 trainable.append(param)
                 total_param += param.numel()
