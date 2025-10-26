@@ -1,5 +1,6 @@
 """Vision Transformer Image Classification."""
 
+import os
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, Namespace
 
 import torch as th
@@ -9,7 +10,7 @@ from timm.models import create_model
 from src.overa.utils import set_seed
 from dataloader import get_dl
 from data_config import CONFIG
-from utils import replace_qkv
+from utils import replace_qkv, train, test
 
 
 def _parse_args() -> Namespace:
@@ -93,6 +94,7 @@ def main():
     alpha = data_config["alpha"]
     _ = data_config["logger"]
     num_classes = data_config["n_c"]
+    device = th.device("cuda") if th.cuda.is_available() else th.device("cpu")
     
     train_dl, test_dl = get_dl(args.dataset, args.data_seed)
     if "large" == args.model:
@@ -115,7 +117,6 @@ def main():
     for name, param in vit.named_parameters():
         if "vera_lambda_d" in name or "vera_lambda_b" in name or "head" in name:
             param.requires_grad = True
-            print(name)
             if "head" not in name:
                 trainable.append(param)
                 total_param += param.numel()
@@ -123,6 +124,7 @@ def main():
             param.requires_grad = False
     print(f"Total parameters: {total_param}")
     th.nn.init.zeros_(vit.head.weight)
+    vit = vit.to(device)
     opt = th.optim.AdamW(
         [
             {"params": vit.head.parameters(), "lr": 1e-3},
@@ -131,8 +133,14 @@ def main():
         lr=4e-2, weight_decay=0.01
     )
     scheduler = th.optim.lr_scheduler.LinearLR(opt, total_iters=100)
-    # Train
-    # Test
+    vit, last_save_name, best_acc = train(args=args, model=vit,
+                                dl=train_dl, tdl=test_dl, opt=opt,
+                                sched=scheduler, epochs=100, device=device)
+    acc = test(vit, test_dl)
+    if acc > best_acc:
+        os.remove(last_save_name)
+        last_save_name = f"./vit_{args.dataset}_{round(acc, 5)}_seed_{args.seed}_ranks_{args.rank}.pt"
+        th.save(vit.cpu().state_dict(), last_save_name)
 
 if __name__ == "__main__":
     main()

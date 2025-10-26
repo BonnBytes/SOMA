@@ -141,7 +141,7 @@ class VeraLinear(VeraBase):
         temp = self.A_vera(x)
         _, _, fe = temp.shape
         # Add zeros to compensate loss after realFFT
-        zeros_ = th.zeros((bs, p, e - fe))
+        zeros_ = th.zeros((bs, p, e - fe)).to(temp.device)
         temp = th.cat([temp, zeros_], dim=-1)
         l_d = th.diag(
             th.cat(
