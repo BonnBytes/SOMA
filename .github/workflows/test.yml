@@ -30,6 +30,6 @@ jobs:
       - name: Install dependencies
         run: uv tool install flake8
       - name: Run flake8
-        run: uv tool run flake8 scripts/toy_random_projection/ src/ tests/test_*.py
+        run: uv tool run flake8 scripts/toy_random_projection/ scripts/image_classification/ src/ tests/test_*.py
       - name: Run mypy
-        run: uv tool run mypy scripts/toy_random_projection/ src/ tests/test_*.py
+        run: uv tool run mypy scripts/toy_random_projection/ scripts/image_classification/ src/ tests/test_*.py
