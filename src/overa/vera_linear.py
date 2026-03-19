@@ -124,7 +124,12 @@ class VeraLinear(VeraBase):
         self.fixed_lambda_d = th.nn.Parameter(
             init_fn(self.out_feat - self.rank), requires_grad=False
         )
-        self.A_vera, self.B_vera = self.compute_bases()
+        a_mat, b_mat = self.compute_bases()
+        if isinstance(a_mat, th.Tensor) and isinstance(b_mat, th.Tensor):
+            self.A_vera = th.nn.Parameter(a_mat, requires_grad=False)
+            self.B_vera = th.nn.Parameter(b_mat, requires_grad=False)
+        else:
+            self.A_vera, self.B_vera = a_mat, b_mat
         self.move_to_device()
 
     def __fft_forward(self, x: th.Tensor) -> th.Tensor:
@@ -141,7 +146,7 @@ class VeraLinear(VeraBase):
         temp = self.A_vera(x)
         _, _, fe = temp.shape
         # Add zeros to compensate loss after realFFT
-        zeros_ = th.zeros((bs, p, e - fe))
+        zeros_ = th.zeros((bs, p, e - fe), device=temp.device)
         temp = th.cat([temp, zeros_], dim=-1)
         l_d = th.diag(
             th.cat(

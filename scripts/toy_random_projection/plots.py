@@ -30,32 +30,32 @@ def load_file(fname: str) -> np.ndarray:
 def main():
     """Plot code."""
     r = 32
-    random_mse = load_file(f"./r_mse_{r}_ut_init_z.pkl")
-    wavelet_mse = load_file(f"./w_mse_{r}_ut_init_z.pkl")
-    fourier_mse = load_file(f"./f_mse_{r}_ut_init_z.pkl")
-    welsh_mse = load_file(f"./h_mse_{r}_ut_init_z.pkl")
-    hippo_mse = load_file(f"./m_mse_{r}_ut_init_z.pkl")
+    random_mse = load_file(f"./toy_results/r_mse_{r}_ut_init_z.pkl")
+    wavelet_mse = load_file(f"./toy_results/w_mse_{r}_ut_init_z.pkl")
+    fourier_mse = load_file(f"./toy_results/f_mse_{r}_ut_init_z.pkl")
+    welsh_mse = load_file(f"./toy_results/h_mse_{r}_ut_init_z.pkl")
+    # hippo_mse = load_file(f"./results/m_mse_{r}_ut_init_z.pkl")
 
     print(
         random_mse.shape,
         wavelet_mse.shape,
         fourier_mse.shape,
         welsh_mse.shape,
-        hippo_mse.shape,
+        # hippo_mse.shape,
     )
 
     f_mean, f_std = np.mean(fourier_mse, axis=0), np.std(fourier_mse, axis=0)
     r_mean, r_std = np.mean(random_mse, axis=0), np.std(random_mse, axis=0)
     w_mean, w_std = np.mean(wavelet_mse, axis=0), np.std(wavelet_mse, axis=0)
     we_mean, we_std = np.mean(welsh_mse, axis=0), np.std(welsh_mse, axis=0)
-    m_mean, m_std = np.mean(hippo_mse, axis=0), np.std(hippo_mse, axis=0)
+    # m_mean, m_std = np.mean(hippo_mse, axis=0), np.std(hippo_mse, axis=0)
 
     _, ax = plt.subplots()
     ax.plot(np.arange(0, len(r_mean)), r_mean, c="b", label="Random matrix")
     ax.plot(np.arange(0, len(w_mean)), w_mean, c="g", label="Wavelet basis")
     ax.plot(np.arange(0, len(f_mean)), f_mean, c="k", label="Fourier basis")
     ax.plot(np.arange(0, len(we_mean)), we_mean, c="r", label="Hadamard basis")
-    ax.plot(np.arange(0, len(m_mean)), m_mean, c="c", label="Hippo basis")
+    # ax.plot(np.arange(0, len(m_mean)), m_mean, c="c", label="Hippo basis")
     ax.fill_between(
         np.arange(0, len(r_mean)),
         r_mean - r_std,
@@ -84,21 +84,29 @@ def main():
         color="r",
         alpha=0.3,
     )
-    ax.fill_between(
-        np.arange(0, len(m_mean)),
-        m_mean - m_std,
-        m_mean + m_std,
-        color="c",
-        alpha=0.3,
-    )
+    # ax.fill_between(
+    #     np.arange(0, len(m_mean)),
+    #     m_mean - m_std,
+    #     m_mean + m_std,
+    #     color="c",
+    #     alpha=0.3,
+    # )
     ax.legend()
-
+    time_eval = 2000
     axin = ax.inset_axes([0.48, 0.25, 0.5, 0.4])
-    axin.semilogy(np.arange(0, len(r_mean))[2000:], r_mean[2000:], c="b")
-    axin.semilogy(np.arange(0, len(w_mean))[2000:], w_mean[2000:], c="g")
-    axin.semilogy(np.arange(0, len(f_mean))[2000:], f_mean[2000:], c="k")
-    axin.semilogy(np.arange(0, len(we_mean))[2000:], we_mean[2000:], c="r")
-    axin.semilogy(np.arange(0, len(m_mean))[2000:], m_mean[2000:], c="c")
+    axin.semilogy(
+        np.arange(0, len(r_mean))[time_eval:], r_mean[time_eval:], c="b"
+    )
+    axin.semilogy(
+        np.arange(0, len(w_mean))[time_eval:], w_mean[time_eval:], c="g"
+    )
+    axin.semilogy(
+        np.arange(0, len(f_mean))[time_eval:], f_mean[time_eval:], c="k"
+    )
+    axin.semilogy(
+        np.arange(0, len(we_mean))[time_eval:], we_mean[time_eval:], c="r"
+    )
+    # axin.semilogy(np.arange(0, len(m_mean))[time_eval:], m_mean[time_eval:], c="c")
     axin.tick_params(axis="both", labelsize=7)
     # axin.grid()
     ax.indicate_inset_zoom(axin, alpha=1.0, linewidth=2.0, edgecolor="k")
@@ -106,7 +114,11 @@ def main():
     plt.xlabel("Iterations")
     plt.ylabel("MSE")
     plt.grid()
-    plt.savefig(f"all_initialisations_{r}.png", dpi=600, bbox_inches="tight")
+    plt.savefig(
+        f"./toy_results/all_initialisations_{r}.png",
+        dpi=600,
+        bbox_inches="tight",
+    )
     plt.close()
 
 

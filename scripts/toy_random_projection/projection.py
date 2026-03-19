@@ -1,16 +1,19 @@
 """Random Projection Problem."""
 
+import os
 import pickle
+import time
 from argparse import ArgumentParser, Namespace
 from typing import Any, Dict, Union
 
+import numpy as np
 import torch as th
 from tqdm.auto import tqdm
 
 from src.overa.utils import set_seed
 from src.overa.vera_linear import VeraLinear
 
-th.set_default_dtype(th.float64)
+th.set_default_dtype(th.float32)
 
 
 class VeraModel(th.nn.Module):
@@ -103,19 +106,24 @@ def train(args: Namespace):
     Args:
         args (Namespace): CLI arguments.
     """
+    os.makedirs("./toy_results/", exist_ok=True)
     device = th.device("cpu")
     if th.cuda.is_available():
         device = th.device("cuda")
     # elif th.backends.mps.is_available():
     #     device = th.device("mps")
     print(f"Using backend: {device}")
+    seed_times = []
     seed_mses = []
-    for seed in range(0, 25):
+    for seed in range(0, 10):
+        th.cuda.synchronize()
+        start_time = time.perf_counter()
         print(f"Seed: {seed}")
         set_seed(seed)
         mses = []
         y = th.randn((1, 1, args.embed_dim))
-        x = th.ones((1, 1, args.embed_dim))
+        y = y.repeat((100, 1, 1))
+        x = th.ones((100, 1, args.embed_dim))
         model: Union[VeraModel, OveraModel] = VeraModel(
             embed_dim=args.embed_dim, rank=args.rank
         )
@@ -155,8 +163,16 @@ def train(args: Namespace):
             mses.append(loss_val.item())
             pbar.set_description(f"Epoch: {epoch} -- Loss: {loss_val.item()}")
         seed_mses.append(mses)
+        th.cuda.synchronize()
+        end_time = time.perf_counter()
+        seed_times.append(end_time - start_time)
+    mean_time = np.mean(seed_times)
+    std_time = np.std(seed_times)
+    print(
+        f"Initialisation: {args.init}, Time mean: {mean_time}, std: {std_time}"
+    )
     with open(
-        f"{args.init}_mse_{args.rank}_ut_init_{args.ut_lambda}.pkl",
+        f"./toy_results/{args.init}_mse_{args.rank}_ut_init_{args.ut_lambda}.pkl",
         "wb",
     ) as fp:
         pickle.dump(seed_mses, fp)
