@@ -80,8 +80,8 @@ class VeraLinear(VeraBase):
         Returns:
             Tuple[Callable, ...]: Tuple containing fourier matrices.
         """
-        a_mat = partial(th.fft.rfft, norm="ortho")
-        b_mat = partial(th.fft.irfft, norm="ortho")
+        a_mat = partial(th.fft.rfft, norm="ortho", n=self.out_feat)
+        b_mat = partial(th.fft.irfft, norm="ortho", n=self.out_feat)
         return a_mat, b_mat
 
     def welsh_bases(self) -> Tuple[th.Tensor, ...]:
@@ -108,7 +108,11 @@ class VeraLinear(VeraBase):
         return A, B
 
     def update_layer(self) -> None:
-        """Initialise VeRA parameters."""
+        """Initialise VeRA parameters.
+
+        Raises:
+            ValueError: Error if rank is greater than Fourier embedding dimension.
+        """
         self.vera_lambda_b = th.nn.Parameter(
             th.zeros(self.out_feat), requires_grad=True
         )
@@ -121,8 +125,15 @@ class VeraLinear(VeraBase):
             init_fn = th.ones
         elif self.__ut_lambda_init == "r":
             init_fn = th.randn
+        fixed_shape = self.out_feat - self.rank
+        if self.__init_scheme == "f":
+            if self.rank > self.out_feat // 2 + 1:
+                raise ValueError(
+                    "Rank cannot be greater than Fourier embedding dimension."
+                )
+            fixed_shape = (self.out_feat // 2 + 1) - self.rank
         self.fixed_lambda_d = th.nn.Parameter(
-            init_fn(self.out_feat - self.rank), requires_grad=False
+            init_fn(fixed_shape), requires_grad=False
         )
         a_mat, b_mat = self.compute_bases()
         if isinstance(a_mat, th.Tensor) and isinstance(b_mat, th.Tensor):
@@ -142,12 +153,7 @@ class VeraLinear(VeraBase):
             th.Tensor: VeRA-FFT Output.
         """
         dt_cf = th.cfloat
-        bs, p, e = x.shape
         temp = self.A_vera(x)
-        _, _, fe = temp.shape
-        # Add zeros to compensate loss after realFFT
-        zeros_ = th.zeros((bs, p, e - fe), device=temp.device)
-        temp = th.cat([temp, zeros_], dim=-1)
         l_d = th.diag(
             th.cat(
                 [
@@ -157,8 +163,6 @@ class VeraLinear(VeraBase):
             )
         ).to(dtype=dt_cf)
         temp = temp.to(dtype=dt_cf) @ l_d
-        # Remove added zeros for irealFFT
-        temp = temp[:, :, :fe]
         temp = self.B_vera(temp)
         l_b = th.diag(self.vera_lambda_b)
         y_out = temp @ l_b.to(dtype=temp.dtype)

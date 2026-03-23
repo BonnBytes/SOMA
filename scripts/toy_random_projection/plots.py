@@ -29,12 +29,13 @@ def load_file(fname: str) -> np.ndarray:
 
 def main():
     """Plot code."""
+    base_folder = "./toy_results/"
     r = 32
-    random_mse = load_file(f"./toy_results/r_mse_{r}_ut_init_z.pkl")
-    wavelet_mse = load_file(f"./toy_results/w_mse_{r}_ut_init_z.pkl")
-    fourier_mse = load_file(f"./toy_results/f_mse_{r}_ut_init_z.pkl")
-    welsh_mse = load_file(f"./toy_results/h_mse_{r}_ut_init_z.pkl")
-    # hippo_mse = load_file(f"./results/m_mse_{r}_ut_init_z.pkl")
+    random_mse = load_file(f"{base_folder}r_mse_{r}_ut_init_z.pkl")
+    wavelet_mse = load_file(f"{base_folder}w_mse_{r}_ut_init_z.pkl")
+    fourier_mse = load_file(f"{base_folder}f_mse_{r}_ut_init_z.pkl")
+    welsh_mse = load_file(f"{base_folder}h_mse_{r}_ut_init_z.pkl")
+    # hippo_mse = load_file(f"{base_folder}m_mse_{r}_ut_init_z.pkl")
 
     print(
         random_mse.shape,
@@ -51,37 +52,52 @@ def main():
     # m_mean, m_std = np.mean(hippo_mse, axis=0), np.std(hippo_mse, axis=0)
 
     _, ax = plt.subplots()
-    ax.plot(np.arange(0, len(r_mean)), r_mean, c="b", label="Random matrix")
-    ax.plot(np.arange(0, len(w_mean)), w_mean, c="g", label="Wavelet basis")
-    ax.plot(np.arange(0, len(f_mean)), f_mean, c="k", label="Fourier basis")
-    ax.plot(np.arange(0, len(we_mean)), we_mean, c="r", label="Hadamard basis")
+    ax.plot(
+        np.arange(0, len(r_mean)), r_mean, c="tab:blue", label="Random matrix"
+    )
+    ax.plot(
+        np.arange(0, len(f_mean)), f_mean, c="tab:brown", label="Fourier basis"
+    )
+    ax.plot(
+        np.arange(0, len(w_mean)),
+        w_mean,
+        "--",
+        c="tab:cyan",
+        label="Wavelet basis",
+    )
+    ax.plot(
+        np.arange(0, len(we_mean)),
+        we_mean,
+        c="tab:red",
+        label="Hadamard basis",
+    )
     # ax.plot(np.arange(0, len(m_mean)), m_mean, c="c", label="Hippo basis")
     ax.fill_between(
         np.arange(0, len(r_mean)),
-        r_mean - r_std,
+        np.maximum(0, r_mean - r_std),
         r_mean + r_std,
-        color="b",
+        color="tab:blue",
         alpha=0.3,
     )
     ax.fill_between(
         np.arange(0, len(w_mean)),
-        w_mean - w_std,
+        np.maximum(0, w_mean - w_std),
         w_mean + w_std,
-        color="g",
+        color="tab:green",
         alpha=0.3,
     )
     ax.fill_between(
         np.arange(0, len(f_mean)),
-        f_mean - f_std,
+        np.maximum(0, f_mean - f_std),
         f_mean + f_std,
-        color="y",
+        color="tab:brown",
         alpha=0.3,
     )
     ax.fill_between(
         np.arange(0, len(we_mean)),
-        we_mean - we_std,
+        np.maximum(0, we_mean - we_std),
         we_mean + we_std,
-        color="r",
+        color="tab:red",
         alpha=0.3,
     )
     # ax.fill_between(
@@ -95,16 +111,23 @@ def main():
     time_eval = 2000
     axin = ax.inset_axes([0.48, 0.25, 0.5, 0.4])
     axin.semilogy(
-        np.arange(0, len(r_mean))[time_eval:], r_mean[time_eval:], c="b"
+        np.arange(0, len(r_mean))[time_eval:], r_mean[time_eval:], c="tab:blue"
     )
     axin.semilogy(
-        np.arange(0, len(w_mean))[time_eval:], w_mean[time_eval:], c="g"
+        np.arange(0, len(f_mean))[time_eval:],
+        f_mean[time_eval:],
+        c="tab:brown",
     )
     axin.semilogy(
-        np.arange(0, len(f_mean))[time_eval:], f_mean[time_eval:], c="k"
+        np.arange(0, len(w_mean))[time_eval:],
+        w_mean[time_eval:],
+        "--",
+        c="tab:cyan",
     )
     axin.semilogy(
-        np.arange(0, len(we_mean))[time_eval:], we_mean[time_eval:], c="r"
+        np.arange(0, len(we_mean))[time_eval:],
+        we_mean[time_eval:],
+        c="tab:red",
     )
     # axin.semilogy(np.arange(0, len(m_mean))[time_eval:], m_mean[time_eval:], c="c")
     axin.tick_params(axis="both", labelsize=7)
@@ -115,7 +138,7 @@ def main():
     plt.ylabel("MSE")
     plt.grid()
     plt.savefig(
-        f"./toy_results/all_initialisations_{r}.png",
+        f"{base_folder}all_initialisations_{r}.png",
         dpi=600,
         bbox_inches="tight",
     )

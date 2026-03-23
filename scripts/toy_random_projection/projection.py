@@ -8,6 +8,7 @@ from typing import Any, Dict, Union
 
 import numpy as np
 import torch as th
+from torch.utils.flop_counter import FlopCounterMode
 from tqdm.auto import tqdm
 
 from src.overa.utils import set_seed
@@ -134,7 +135,7 @@ def train(args: Namespace):
                 "init_scheme": args.init,
                 "ut_lambda": args.ut_lambda,
                 "wavelet": "Haar",
-                "transform_level": 7,
+                "transform_level": 5,
             }
             model = OveraModel(
                 embed_dim=args.embed_dim, overa_config=overa_config
@@ -142,17 +143,27 @@ def train(args: Namespace):
         model = model.to(device)
         y, x = y.to(device), x.to(device)
         loss = th.nn.MSELoss()
+        model.eval()
+        flop_count = FlopCounterMode(display=True)
+        with flop_count:
+            _ = model(x)
+        total_flops = flop_count.get_total_flops()
+        print(f"Total Forward FLOPs: {total_flops / 1e9:.2f} GFLOPs")
+
         for name, param in model.named_parameters():
             if "vera_lambda_b" in name or "vera_lambda_d" in name:
                 param.requires_grad = True
             else:
                 param.requires_grad = False
-        opt = th.optim.Adam(model.parameters(), lr=1e-3)
+        opt = th.optim.Adam(
+            model.parameters(), lr=1e-3 if args.init != "h" else 1e-4
+        )
         num_params = sum(
             param.numel()
             for param in model.parameters()
             if param.requires_grad
         )
+        model.train()
         print(f"# Trainable Params: {num_params}")
         for epoch in (pbar := tqdm(range(0, args.iterations))):
             opt.zero_grad()
@@ -168,6 +179,7 @@ def train(args: Namespace):
         seed_times.append(end_time - start_time)
     mean_time = np.mean(seed_times)
     std_time = np.std(seed_times)
+
     print(
         f"Initialisation: {args.init}, Time mean: {mean_time}, std: {std_time}"
     )
