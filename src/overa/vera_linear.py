@@ -1,7 +1,7 @@
 """Vera Linear Layer."""
 
 from functools import partial
-from typing import Any, Callable, Dict, Tuple, Union
+from typing import Any, Callable, Dict, Tuple, Union, cast
 
 import torch as th
 from scipy.linalg import hadamard
@@ -119,7 +119,7 @@ class VeraLinear(VeraBase):
         self.vera_lambda_d = th.nn.Parameter(
             th.empty(self.rank), requires_grad=True
         )
-        th.nn.init.normal_(self.vera_lambda_d)
+        th.nn.init.normal_(self.vera_lambda_d, std=0.02)
         init_fn = th.zeros
         if self.__ut_lambda_init == "o":
             init_fn = th.ones
@@ -223,17 +223,19 @@ class VeraMergedLinear(th.nn.Module):
             config (Dict[str, Any]): Ortho-VeRA configutation.
         """
         super(VeraMergedLinear, self).__init__()
-        _, embed_dim = th.tensor(base_layer.weight.data).shape
+        qkv_layer = cast(th.nn.Linear, base_layer)
+        embed_dim = qkv_layer.in_features
+        has_bias = qkv_layer.bias is not None
         self.w_q = th.nn.Linear(
-            in_features=embed_dim, out_features=embed_dim, bias=False
+            in_features=embed_dim, out_features=embed_dim, bias=has_bias
         )
         self.w_k = th.nn.Linear(
-            in_features=embed_dim, out_features=embed_dim, bias=False
+            in_features=embed_dim, out_features=embed_dim, bias=has_bias
         )
         self.w_v = th.nn.Linear(
-            in_features=embed_dim, out_features=embed_dim, bias=False
+            in_features=embed_dim, out_features=embed_dim, bias=has_bias
         )
-        self.__process_qkv_split(base_layer)
+        self.__process_qkv_split(qkv_layer)
         self.vera_q = VeraLinear(base_layer=self.w_q, config=config)
         self.vera_k = VeraLinear(base_layer=self.w_k, config=config)
         self.vera_v = VeraLinear(base_layer=self.w_v, config=config)
@@ -243,15 +245,27 @@ class VeraMergedLinear(th.nn.Module):
 
         Args:
             layer (th.nn.Module): Base layer.
+
+        Raises:
+            ValueError: Error if qkv bias shape is improper.
         """
-        base_weight = th.tensor(
-            layer.weight.data
-        )  # convert to tensor to make mypy happy.
-        # base_weight = layer.weight.detach().clone()
+        qkv_layer = cast(th.nn.Linear, layer)
+        base_weight = qkv_layer.weight.detach().clone()
         w_q, w_k, w_v = split_qkv_weight(base_weight)
         self.w_q.weight.data = w_q
         self.w_k.weight.data = w_k
         self.w_v.weight.data = w_v
+
+        if qkv_layer.bias is not None:
+            base_bias = qkv_layer.bias.detach().clone()
+            if base_bias.numel() != 3 * self.w_q.out_features:
+                raise ValueError("Improper qkv bias tensor.")
+            b_q, b_k, b_v = base_bias.reshape(3, self.w_q.out_features).unbind(
+                0
+            )
+            self.w_q.bias.data = b_q
+            self.w_k.bias.data = b_k
+            self.w_v.bias.data = b_v
 
     def forward(self, x: th.Tensor) -> th.Tensor:
         """Forward pass.
@@ -267,3 +281,74 @@ class VeraMergedLinear(th.nn.Module):
         v = self.vera_v(x)
         qkv = th.cat([q, k, v], dim=-1)
         return qkv
+
+
+class VeraMergedLinearQV(th.nn.Module):
+    """Vera merged linear layer with VeRA on Q and V only."""
+
+    def __init__(
+        self, base_layer: th.nn.Module, config: Dict[str, Any]
+    ) -> None:
+        """Process and initialise QV-only OVeRA layers.
+
+        Args:
+            base_layer (th.nn.Module): Base merged qkv layer.
+            config (Dict[str, Any]): Ortho-VeRA configuration.
+        """
+        super(VeraMergedLinearQV, self).__init__()
+        qkv_layer = cast(th.nn.Linear, base_layer)
+        embed_dim = qkv_layer.in_features
+        has_bias = qkv_layer.bias is not None
+        self.w_q = th.nn.Linear(
+            in_features=embed_dim, out_features=embed_dim, bias=has_bias
+        )
+        self.w_k = th.nn.Linear(
+            in_features=embed_dim, out_features=embed_dim, bias=has_bias
+        )
+        self.w_v = th.nn.Linear(
+            in_features=embed_dim, out_features=embed_dim, bias=has_bias
+        )
+        self.__process_qkv_split(qkv_layer)
+        self.vera_q = VeraLinear(base_layer=self.w_q, config=config)
+        self.vera_v = VeraLinear(base_layer=self.w_v, config=config)
+
+    def __process_qkv_split(self, layer: th.nn.Module) -> None:
+        """Split and initialise QKV layers into individual layers.
+
+        Args:
+            layer (th.nn.Module): Base layer.
+
+        Raises:
+            ValueError: Error if qkv bias shape is improper.
+        """
+        qkv_layer = cast(th.nn.Linear, layer)
+        base_weight = qkv_layer.weight.detach().clone()
+        w_q, w_k, w_v = split_qkv_weight(base_weight)
+        self.w_q.weight.data = w_q
+        self.w_k.weight.data = w_k
+        self.w_v.weight.data = w_v
+
+        if qkv_layer.bias is not None:
+            base_bias = qkv_layer.bias.detach().clone()
+            if base_bias.numel() != 3 * self.w_q.out_features:
+                raise ValueError("Improper qkv bias tensor.")
+            b_q, b_k, b_v = base_bias.reshape(3, self.w_q.out_features).unbind(
+                0
+            )
+            self.w_q.bias.data = b_q
+            self.w_k.bias.data = b_k
+            self.w_v.bias.data = b_v
+
+    def forward(self, x: th.Tensor) -> th.Tensor:
+        """Forward pass.
+
+        Args:
+            x (th.Tensor): Input tensor.
+
+        Returns:
+            th.Tensor: Vera merged output.
+        """
+        q = self.vera_q(x)
+        k = self.w_k(x)
+        v = self.vera_v(x)
+        return th.cat([q, k, v], dim=-1)
