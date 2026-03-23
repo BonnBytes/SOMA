@@ -183,8 +183,10 @@ class VeraLinear(VeraBase):
             )
         ).to(dtype=dt)
         l_b = th.diag(self.vera_lambda_b.to(dtype=dt)).to(dtype=dt)
-        H = l_b @ self.B_vera.to(dtype=dt) @ l_d @ self.A_vera.to(dtype=dt)
-        y_out = x @ H.T
+        temp_x = x @ self.A_vera.to(dtype=dt).T
+        temp_x = temp_x @ l_d
+        temp_x = temp_x @ self.B_vera.to(dtype=dt).T
+        y_out = temp_x @ l_b
         return y_out
 
     def forward(self, x: th.Tensor, *args, **kwargs) -> th.Tensor:
