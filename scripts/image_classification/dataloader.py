@@ -31,7 +31,7 @@ def _create_10_per_class_subset(
         targets = dataset.targets
     else:
         # Extract labels manually if 'targets' attribute is missing
-        fname = f"./targets_{dname}.pt"
+        fname = f"./data/targets_{dname}.pt"
         if os.path.exists(fname):
             print("Target file exists, loading pt file")
             targets = torch.load(fname)
@@ -159,7 +159,7 @@ def get_dl(dataset_type: str, seed: int) -> Tuple[DataLoader, DataLoader]:
         )
 
     train_loader = _create_loader(train_dataset, drop=True, bs=64)
-    test_loader = _create_loader(test_dataset, shuffle=False, bs=128)
+    test_loader = _create_loader(test_dataset, shuffle=False, bs=512)
     return train_loader, test_loader
 
 

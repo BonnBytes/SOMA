@@ -25,7 +25,7 @@ def _parse_args() -> Namespace:
         "--dataset",
         default="cifar",
         type=str,
-        choices=["choices", "flowers", "resisc", "food"],
+        choices=["cifar", "flowers", "resisc", "food"],
         help="Dataset to train",
     )
     parser.add_argument(
@@ -41,7 +41,7 @@ def _parse_args() -> Namespace:
     parser.add_argument(
         "--init",
         type=str,
-        choices=["f", "w", "h", "m"],
+        choices=["f", "w", "h"],
         default="f",
         help="Choice of initialisation method",
     )
@@ -61,14 +61,25 @@ def _parse_args() -> Namespace:
         default=7,
         help="Wavelet transformation level",
     )
+    parser.add_argument(
+        "--target_proj",
+        type=str,
+        choices=["qv", "qkv"],
+        default="qv",
+        help="Attention projections to adapt with VeRA.",
+    )
+    parser.add_argument("--seed", default=42, type=int, help="Network seed")
     parser.add_argument("--evaluate", default=None, type=str)
     return parser.parse_args()
 
 
 def main():
     """Vit training script."""
-    set_seed()
     args = _parse_args()
+    save_folder = f"./vit-{args.model}-ckpts/{args.dataset}_seed_{args.seed}_ranks_{args.rank}"
+    os.makedirs(save_folder, exist_ok=True)
+    args.save_folder = save_folder
+    set_seed(args.seed)
     data_config = CONFIG[args.dataset]
     alpha = data_config["alpha"]
     _ = data_config["logger"]
@@ -95,7 +106,7 @@ def main():
         "wavelet": args.wavelet,
         "transform_level": args.wavelet_level,
     }
-    vit = replace_qkv(vit, overa_config)
+    vit = replace_qkv(vit, overa_config, target_proj=args.target_proj)
     vit.reset_classifier(num_classes)
     trainable = []
     total_param = 0
@@ -112,14 +123,14 @@ def main():
         else:
             param.requires_grad = False
     print(f"Total parameters: {total_param}")
-    th.nn.init.zeros_(vit.head.weight)
+    # th.nn.init.zeros_(vit.head.weight)
     vit = vit.to(device)
     opt = th.optim.AdamW(
-        [{"params": vit.head.parameters(), "lr": 1e-3}, {"params": trainable}],
+        [{"params": vit.head.parameters(), "lr": 2e-3}, {"params": trainable}],
         lr=4e-2,
         weight_decay=0.01,
     )
-    scheduler = th.optim.lr_scheduler.LinearLR(opt, total_iters=100)
+    scheduler = th.optim.lr_scheduler.LinearLR(opt, total_iters=10)
     vit, last_save_name, best_acc = train(
         args=args,
         model=vit,
@@ -127,13 +138,16 @@ def main():
         tdl=test_dl,
         opt=opt,
         sched=scheduler,
-        epochs=100,
+        epochs=10,
         device=device,
     )
-    acc = test(vit, test_dl)
+    acc = test(vit, test_dl, device)
     if acc > best_acc:
         os.remove(last_save_name)
-        last_save_name = f"./vit_{args.dataset}_{round(acc, 5)}_seed_{args.seed}_ranks_{args.rank}.pt"
+        last_save_name = (
+            f"./{args.save_folder}/vit_{args.dataset}_{round(acc, 5)}"
+            f"_seed_{args.seed}_ranks_{args.rank}.pt"
+        )
         th.save(vit.cpu().state_dict(), last_save_name)
 
 

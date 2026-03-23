@@ -10,26 +10,40 @@ from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
-from src.overa.vera_linear import VeraMergedLinear
+from src.overa.vera_linear import VeraMergedLinear, VeraMergedLinearQV
 
 
 def replace_qkv(
-    model: th.nn.Module, overa_config: Dict[str, Any]
+    model: th.nn.Module,
+    overa_config: Dict[str, Any],
+    target_proj: str = "qv",
 ) -> th.nn.Module:
     """Replace QKV linear with VeRA merged linear layer.
 
     Args:
         model (th.nn.Module): ViT model.
         overa_config (Dict[str, Any]): OVeRA configuration.
+        target_proj (str): Projection target, one of qv or qkv.
+
+    Raises:
+        ValueError: Error if target projection value is invalid.
 
     Returns:
         th.nn.Module: VeRA replaced model.
     """
     for idx in range(0, len(model.blocks)):  # type: ignore
         base_layer = model.blocks[idx].attn.qkv  # type: ignore
-        overa_layer = VeraMergedLinear(
-            base_layer=base_layer, config=overa_config
-        )
+        overa_layer: th.nn.Module
+        if target_proj == "qv":
+            overa_layer = VeraMergedLinearQV(
+                base_layer=base_layer, config=overa_config
+            )
+        elif target_proj == "qkv":
+            overa_layer = VeraMergedLinear(
+                base_layer=base_layer, config=overa_config
+            )
+        else:
+            raise ValueError("target_proj should be one of ['qv', 'qkv']")
         model.blocks[idx].attn.qkv = overa_layer  # type: ignore
     return model
 
@@ -84,8 +98,15 @@ def train(
                 best_acc = acc
                 if last_save_name != "":
                     os.remove(last_save_name)
-                last_save_name = f"./vit_{args.dataset}_{round(acc, 5)}_seed_{args.seed}_ranks_{args.rank}.pt"
-                th.save(model.cpu().state_dict(), last_save_name)
+                last_save_name = (
+                    f"./{args.save_folder}/vit_{args.dataset}_{round(acc, 5)}"
+                    f"_seed_{args.seed}_ranks_{args.rank}.pt"
+                )
+                cpu_state = {
+                    key: value.detach().cpu()
+                    for key, value in model.state_dict().items()
+                }
+                th.save(cpu_state, last_save_name)
     return model, last_save_name, best_acc
 
 
