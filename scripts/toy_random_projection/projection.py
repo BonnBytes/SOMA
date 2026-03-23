@@ -1,16 +1,20 @@
 """Random Projection Problem."""
 
+import os
 import pickle
+import time
 from argparse import ArgumentParser, Namespace
 from typing import Any, Dict, Union
 
+import numpy as np
 import torch as th
+from torch.utils.flop_counter import FlopCounterMode
 from tqdm.auto import tqdm
 
 from src.overa.utils import set_seed
 from src.overa.vera_linear import VeraLinear
 
-th.set_default_dtype(th.float64)
+th.set_default_dtype(th.float32)
 
 
 class VeraModel(th.nn.Module):
@@ -103,19 +107,24 @@ def train(args: Namespace):
     Args:
         args (Namespace): CLI arguments.
     """
+    os.makedirs("./toy_results/", exist_ok=True)
     device = th.device("cpu")
     if th.cuda.is_available():
         device = th.device("cuda")
     # elif th.backends.mps.is_available():
     #     device = th.device("mps")
     print(f"Using backend: {device}")
+    seed_times = []
     seed_mses = []
-    for seed in range(0, 25):
+    for seed in range(0, 10):
+        th.cuda.synchronize()
+        start_time = time.perf_counter()
         print(f"Seed: {seed}")
         set_seed(seed)
         mses = []
         y = th.randn((1, 1, args.embed_dim))
-        x = th.ones((1, 1, args.embed_dim))
+        y = y.repeat((100, 1, 1))
+        x = th.ones((100, 1, args.embed_dim))
         model: Union[VeraModel, OveraModel] = VeraModel(
             embed_dim=args.embed_dim, rank=args.rank
         )
@@ -126,7 +135,7 @@ def train(args: Namespace):
                 "init_scheme": args.init,
                 "ut_lambda": args.ut_lambda,
                 "wavelet": "Haar",
-                "transform_level": 7,
+                "transform_level": 5,
             }
             model = OveraModel(
                 embed_dim=args.embed_dim, overa_config=overa_config
@@ -134,17 +143,27 @@ def train(args: Namespace):
         model = model.to(device)
         y, x = y.to(device), x.to(device)
         loss = th.nn.MSELoss()
+        model.eval()
+        flop_count = FlopCounterMode(display=True)
+        with flop_count:
+            _ = model(x)
+        total_flops = flop_count.get_total_flops()
+        print(f"Total Forward FLOPs: {total_flops / 1e9:.2f} GFLOPs")
+
         for name, param in model.named_parameters():
             if "vera_lambda_b" in name or "vera_lambda_d" in name:
                 param.requires_grad = True
             else:
                 param.requires_grad = False
-        opt = th.optim.Adam(model.parameters(), lr=1e-3)
+        opt = th.optim.Adam(
+            model.parameters(), lr=1e-3 if args.init != "h" else 1e-4
+        )
         num_params = sum(
             param.numel()
             for param in model.parameters()
             if param.requires_grad
         )
+        model.train()
         print(f"# Trainable Params: {num_params}")
         for epoch in (pbar := tqdm(range(0, args.iterations))):
             opt.zero_grad()
@@ -155,8 +174,17 @@ def train(args: Namespace):
             mses.append(loss_val.item())
             pbar.set_description(f"Epoch: {epoch} -- Loss: {loss_val.item()}")
         seed_mses.append(mses)
+        th.cuda.synchronize()
+        end_time = time.perf_counter()
+        seed_times.append(end_time - start_time)
+    mean_time = np.mean(seed_times)
+    std_time = np.std(seed_times)
+
+    print(
+        f"Initialisation: {args.init}, Time mean: {mean_time}, std: {std_time}"
+    )
     with open(
-        f"{args.init}_mse_{args.rank}_ut_init_{args.ut_lambda}.pkl",
+        f"./toy_results/{args.init}_mse_{args.rank}_ut_init_{args.ut_lambda}.pkl",
         "wb",
     ) as fp:
         pickle.dump(seed_mses, fp)
