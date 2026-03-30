@@ -96,12 +96,13 @@ def _split_resisc45(full_dataset: Dataset, seed: int) -> Tuple[Any, Any]:
     return train_indices, test_indices
 
 
-def get_dl(dataset_type: str, seed: int) -> Tuple[DataLoader, DataLoader]:
+def get_dl(dataset_type: str, seed: int, batch_size: int) -> Tuple[DataLoader, DataLoader]:
     """Prepare dataloaders.
 
     Args:
         dataset_type (str): Dataset name.
         seed (int): Seed.
+        batch_size (int): Batch size.
 
     Returns:
         Tuple[DataLoader, DataLoader]: Tuple containing train and test dataloaders.
@@ -158,8 +159,8 @@ def get_dl(dataset_type: str, seed: int) -> Tuple[DataLoader, DataLoader]:
             transform=test_transform,
         )
 
-    train_loader = _create_loader(train_dataset, drop=True, bs=64)
-    test_loader = _create_loader(test_dataset, shuffle=False, bs=512)
+    train_loader = _create_loader(train_dataset, drop=False, bs=batch_size)
+    test_loader = _create_loader(test_dataset, shuffle=False, bs=2048)
     return train_loader, test_loader
 
 
@@ -172,10 +173,12 @@ def _get_transforms() -> Tuple[transforms.Compose, transforms.Compose]:
     transform = transforms.Compose(
         [
             transforms.RandomResizedCrop(224, interpolation=3),
+            transforms.RandAugment(num_ops=2, magnitude=5),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize(
-                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                # mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]
             ),
         ]
     )
@@ -183,9 +186,10 @@ def _get_transforms() -> Tuple[transforms.Compose, transforms.Compose]:
         [
             transforms.Resize(256, interpolation=3),
             transforms.CenterCrop(224),
+            # transforms.Resize((224, 224), interpolation=2),
             transforms.ToTensor(),
             transforms.Normalize(
-                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]
             ),
         ]
     )

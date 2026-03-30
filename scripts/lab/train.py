@@ -1,4 +1,5 @@
 import math
+import os
 import random
 from collections import defaultdict
 
@@ -11,7 +12,6 @@ import pywt
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from avalanche.evaluation.metrics.accuracy import Accuracy
 from layers.merged import BaseMergedLinear as BaseMerged
 from scripts.lab.pcam_dataloader import PCAMDataset
 from scripts.lab.res_dataloader import RESISC45Dataset
@@ -20,6 +20,10 @@ from timm.scheduler import CosineLRScheduler
 from torch.nn.init import _calculate_correct_fan
 from torchvision import datasets, transforms
 from tqdm import tqdm
+
+
+CKPT_BASE_DIR = "./vit-base-ckpts/cifar_r"
+os.makedirs(CKPT_BASE_DIR, exist_ok=True)
 
 
 class VeraTrainer:
@@ -73,12 +77,14 @@ class VeraTrainer:
     def create_model(self, pre_trained_check_path):
         model = create_model(
             "vit_base_patch16_224.augreg_in21k",
-            checkpoint_path="/home/s33zganj/VERA1/checkpoints/imagenet21k_ViT-B_16.npz",
-            drop_path_rate=0.1,
+            checkpoint_path="./ViT-B_16.npz",
+            # pretrained=True,
+            # drop_path_rate=0.1,
         )
         torch.save(model.state_dict(), pre_trained_check_path)
         # Modify model head and set requires_grad to True for the head parameters
         model.head = torch.nn.Linear(model.head.in_features, self.num_classes)
+        torch.nn.init.zeros_(model.head.weight)
         # model.head = nn.Sequential(
         # nn.Dropout(0.2),
         # nn.Linear(model.head.in_features, self.num_classes)
@@ -329,7 +335,7 @@ class VeraTrainer:
         test_indices = []
         for label in class_indices:
             indices = class_indices[label]
-            np.random.seed(self.seed)
+            np.random.seed(6)
             shuffled_indices = np.random.permutation(indices)
             train_indices.extend(shuffled_indices[:10].tolist())
             test_indices.extend(shuffled_indices[10:].tolist())
@@ -479,6 +485,7 @@ class VeraTrainer:
         transform = transforms.Compose(
             [
                 transforms.RandomResizedCrop(224, interpolation=3),
+                transforms.RandAugment(num_ops=2, magnitude=5),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
                 transforms.Normalize(
@@ -564,7 +571,7 @@ class VeraTrainer:
                 },
             ],
             lr=lr_dic[dataset],
-            weight_decay=0.01,
+            weight_decay=3.5418878672194424e-05,#0.01,
         )
 
     def _find_dim(self, model) -> tuple[int, int]:
@@ -587,6 +594,9 @@ class VeraTrainer:
     @staticmethod
     def _save_checkpoint(checkpoint_path, model, optimizer, facc, loss):
         # Saving model's checkpoint
+        checkpoint_dir = os.path.dirname(checkpoint_path)
+        if checkpoint_dir:
+            os.makedirs(checkpoint_dir, exist_ok=True)
         torch.save(
             {
                 "model_state_dict": model.state_dict(),
@@ -843,6 +853,10 @@ class VeraTrainer:
         loss_fn = nn.CrossEntropyLoss()
         epoch_losses = []
         epoch_acc = []
+        from scripts.image_classification.utils import get_grad_stats
+        prev_grads = None
+        iter = 0
+        grad_statistics = {}
         # label_smoothing=0.1
         for ep in (pbar := tqdm(range(num_epochs))):
             batch_losses = []
@@ -859,7 +873,15 @@ class VeraTrainer:
                 # # Only update weights if learning rate is not too small
                 # if optimizer.param_groups[0]['lr'] > 1e-6:
                 # optimizer.step()
+                
+                stats, prev_grads = get_grad_stats(model, prev_grads)
+                grad_statistics[iter] = (stats, loss.item())
+                iter += 1
 
+                if iter % 8 == 0:
+                    model.eval()
+                    torch.save(model.state_dict(), f"./vit-base-ckpts/cifar_r/vit_{iter}.pt")
+                    model.train()
                 optimizer.step()
                 preds = torch.argmax(out, dim=1)
                 correct += (preds == y).sum().item()
@@ -888,7 +910,7 @@ class VeraTrainer:
 
             acc = self.test(model, test_loader)
             print(f"Epoch {ep}: Accuracy={acc:.4f}")
-
+        torch.save(grad_statistics, "./vit-base-ckpts/cifar_r/grad_stats.pt")
         return model.cpu(), epoch_losses
 
     @torch.no_grad()
@@ -921,16 +943,22 @@ class VeraTrainer:
 
     @staticmethod
     def plot_conv_plot(dataset_name):
-        checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/kaiming_vera_model_{dataset_name}.pth"
+        checkpoint_path = (
+            f"{CKPT_BASE_DIR}/kaiming_vera_model_{dataset_name}.pth"
+        )
         checkpoint = torch.load(checkpoint_path)
         kaiming_loss = checkpoint["loss"]
-        checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/svd_vera_model_{dataset_name}.pth"
+        checkpoint_path = f"{CKPT_BASE_DIR}/svd_vera_model_{dataset_name}.pth"
         checkpoint = torch.load(checkpoint_path)
         svd_loss = checkpoint["loss"]
-        checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/wavelet_vera_model_{dataset_name}.pth"
+        checkpoint_path = (
+            f"{CKPT_BASE_DIR}/wavelet_vera_model_{dataset_name}.pth"
+        )
         checkpoint = torch.load(checkpoint_path)
         wavelet_loss = checkpoint["loss"]
-        checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/fourier_vera_model_{dataset_name}.pth"
+        checkpoint_path = (
+            f"{CKPT_BASE_DIR}/fourier_vera_model_{dataset_name}.pth"
+        )
         checkpoint = torch.load(checkpoint_path)
         fourier_loss = checkpoint["loss"]
 
@@ -943,7 +971,7 @@ class VeraTrainer:
         plt.title("Loss Convergence")
         plt.legend()
         plt.show()
-        plt.savefig("/home/s33zganj/VERA1/convergence_plot.png")
+        plt.savefig(f"{CKPT_BASE_DIR}/convergence_plot.png")
 
     @staticmethod
     def plot_rank_accuracy(self):
@@ -1021,7 +1049,7 @@ class VeraTrainer:
         plt.title("Rank Accuracy Plot")
         plt.legend()
         plt.grid(True)
-        plt.savefig("/home/s33zganj/VERA1/rank_acc.jpg")
+        plt.savefig(f"{CKPT_BASE_DIR}/rank_acc.jpg")
         plt.show()
 
     def plot_eigen_hist(
@@ -1133,8 +1161,8 @@ class VeraTrainer:
 
 
 if __name__ == "__main__":
-    dataset_name = "RESISC45"
-    trainer = VeraTrainer(dataset=dataset_name, seed=1)
+    dataset_name = "Cifar100"
+    trainer = VeraTrainer(dataset=dataset_name, seed=0)
     # scale_array = [0.8,0.9,1.0,1.5,2.0,2.5,3.0,3.5,4.0,1000,0.3,100,10,0.5,4.5]
     scale_array = [1]
     # rank = [2,4,8,16,32,64,128,512]
@@ -1144,9 +1172,11 @@ if __name__ == "__main__":
     for r in rank:
         for scale in scale_array:
             print(f"\nTraining with rank={r}, scale={scale}")
-            pre_trained_check_path = f"/home/s33zganj/VERA1/checkpoints/vit_base_patch16_224_in21k_{dataset_name}.pth"
+            pre_trained_check_path = (
+                f"{CKPT_BASE_DIR}/vit_base_patch16_224_in21k_{dataset_name}.pth"
+            )
 
-            Kaiming
+            # Kaiming
             model, in_dim, out_dim = trainer.create_model(
                 pre_trained_check_path
             )
@@ -1166,102 +1196,110 @@ if __name__ == "__main__":
             finetuned_model, optimizer, acc, loss = trainer.train_and_evaluate(
                 model, dataset_name
             )
+            _, explicit_test_loader = trainer._get_data_loaders(dataset_name)
+            explicit_test_acc = trainer.test(finetuned_model, explicit_test_loader)
+            print(
+                f"Final test accuracy (explicit rerun): {explicit_test_acc:.4f}"
+            )
             results.setdefault("Kaiming", []).append(acc)
-            checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/kaiming_vera_model_{dataset_name}.pth"
+            checkpoint_path = (
+                f"{CKPT_BASE_DIR}/kaiming_vera_model_{dataset_name}.pth"
+            )
             trainer._save_checkpoint(
                 checkpoint_path, finetuned_model, optimizer, acc, loss
             )
+            
             # pretrained_eigenvalues, pretrained_weights = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
-            # his_path_eig = f"/home/s33zganj/VERA1/histograms/eigenvalues/eigen_hist_kaiming_{dataset_name}.png"
-            # his_path_weight = f"/home/s33zganj/VERA1/histograms/weights/weight_hist_kaiming_{dataset_name}.png"
+            # his_path_eig = f"{CKPT_BASE_DIR}/histograms/eigen_hist_kaiming_{dataset_name}.png"
+            # his_path_weight = f"{CKPT_BASE_DIR}/histograms/weight_hist_kaiming_{dataset_name}.png"
             # trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues,pretrained_weights, his_path_eig, his_path_weight)
 
-            # # ## SVD
-            model, _, _ = trainer.create_model(pre_trained_check_path)
-            model = trainer.apply_vera_to_attention_SVD(
-                model, 768, 768, scale, r
-            )
-            model = trainer.freeze_parameters(model)
+    #         # # ## SVD
+    #         model, _, _ = trainer.create_model(pre_trained_check_path)
+    #         model = trainer.apply_vera_to_attention_SVD(
+    #             model, 768, 768, scale, r
+    #         )
+    #         model = trainer.freeze_parameters(model)
 
-            trainable_params = sum(
-                p.numel() for p in model.parameters() if p.requires_grad
-            )
-            trainable_params = round(trainable_params / 1000000, 4)
-            print(
-                f"Trainable #Parameters with Head params: {trainable_params}M"
-            )
+    #         trainable_params = sum(
+    #             p.numel() for p in model.parameters() if p.requires_grad
+    #         )
+    #         trainable_params = round(trainable_params / 1000000, 4)
+    #         print(
+    #             f"Trainable #Parameters with Head params: {trainable_params}M"
+    #         )
 
-            finetuned_model, optimizer, acc, loss = trainer.train_and_evaluate(
-                model, dataset_name
-            )
-            results.setdefault("SVD", []).append(acc)
-            checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/svd_vera_model_{dataset_name}.pth"
-            trainer._save_checkpoint(
-                checkpoint_path, finetuned_model, optimizer, acc, loss
-            )
-            # pretrained_eigenvalues, pretrained_weights = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
-            # his_path_eig = f"/home/s33zganj/VERA1/histograms/eigenvalues/eigen_hist_svd_{dataset_name}.png"
-            # his_path_weight = f"/home/s33zganj/VERA1/histograms/weights/weight_hist_svd_{dataset_name}.png"
-            # trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues, pretrained_weights, his_path_eig, his_path_weight)
+    #         finetuned_model, optimizer, acc, loss = trainer.train_and_evaluate(
+    #             model, dataset_name
+    #         )
+    #         results.setdefault("SVD", []).append(acc)
+    #         checkpoint_path = f"{CKPT_BASE_DIR}/svd_vera_model_{dataset_name}.pth"
+    #         trainer._save_checkpoint(
+    #             checkpoint_path, finetuned_model, optimizer, acc, loss
+    #         )
+    #         # pretrained_eigenvalues, pretrained_weights = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
+    #         # his_path_eig = f"{CKPT_BASE_DIR}/histograms/eigen_hist_svd_{dataset_name}.png"
+    #         # his_path_weight = f"{CKPT_BASE_DIR}/histograms/weight_hist_svd_{dataset_name}.png"
+    #         # trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues, pretrained_weights, his_path_eig, his_path_weight)
 
-            #  Wavelet
-            model, _, _ = trainer.create_model(pre_trained_check_path)
+    #         #  Wavelet
+    #         model, _, _ = trainer.create_model(pre_trained_check_path)
 
-            model = trainer.apply_vera_to_attention_Wavelet(
-                model, 768, 768, scale, r
-            )
-            model = trainer.freeze_parameters(model)
+    #         model = trainer.apply_vera_to_attention_Wavelet(
+    #             model, 768, 768, scale, r
+    #         )
+    #         model = trainer.freeze_parameters(model)
 
-            trainable_params = sum(
-                p.numel() for p in model.parameters() if p.requires_grad
-            )
-            trainable_params = round(trainable_params / 1000000, 4)
-            print(
-                f"Trainable #Parameters with Head params: {trainable_params}M"
-            )
+    #         trainable_params = sum(
+    #             p.numel() for p in model.parameters() if p.requires_grad
+    #         )
+    #         trainable_params = round(trainable_params / 1000000, 4)
+    #         print(
+    #             f"Trainable #Parameters with Head params: {trainable_params}M"
+    #         )
 
-            finetuned_model, optimizer, acc, loss = trainer.train_and_evaluate(
-                model, dataset_name
-            )
-            results.setdefault("Wavelet", []).append(acc)
-            checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/wavelet_vera_model_{dataset_name}.pth"
-            trainer._save_checkpoint(
-                checkpoint_path, finetuned_model, optimizer, acc, loss
-            )
-            # pretrained_eigenvalues, pretrained_weights = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
-            # his_path_eig = f"/home/s33zganj/VERA1/histograms/eigenvalues/eigen_hist_wavelet_{dataset_name}.png"
-            # his_path_weight = f"/home/s33zganj/VERA1/histograms/weights/weight_hist_wavelet_{dataset_name}.png"
-            # trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues, pretrained_weights, his_path_eig, his_path_weight)
-            # trainer._get_condition_rate(checkpoint_path)
+    #         finetuned_model, optimizer, acc, loss = trainer.train_and_evaluate(
+    #             model, dataset_name
+    #         )
+    #         results.setdefault("Wavelet", []).append(acc)
+    #         checkpoint_path = f"{CKPT_BASE_DIR}/wavelet_vera_model_{dataset_name}.pth"
+    #         trainer._save_checkpoint(
+    #             checkpoint_path, finetuned_model, optimizer, acc, loss
+    #         )
+    #         # pretrained_eigenvalues, pretrained_weights = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
+    #         # his_path_eig = f"{CKPT_BASE_DIR}/histograms/eigen_hist_wavelet_{dataset_name}.png"
+    #         # his_path_weight = f"{CKPT_BASE_DIR}/histograms/weight_hist_wavelet_{dataset_name}.png"
+    #         # trainer.eing_his(scale, checkpoint_path, pretrained_eigenvalues, pretrained_weights, his_path_eig, his_path_weight)
+    #         # trainer._get_condition_rate(checkpoint_path)
 
-            # # ## Fourier
-            model, _, _ = trainer.create_model(pre_trained_check_path)
-            model = trainer.apply_vera_to_attention_Fourier(
-                model, 768, 768, scale, r
-            )
-            model = trainer.freeze_parameters(model)
+    #         # # ## Fourier
+    #         model, _, _ = trainer.create_model(pre_trained_check_path)
+    #         model = trainer.apply_vera_to_attention_Fourier(
+    #             model, 768, 768, scale, r
+    #         )
+    #         model = trainer.freeze_parameters(model)
 
-            trainable_params = sum(
-                p.numel() for p in model.parameters() if p.requires_grad
-            )
-            trainable_params = round(trainable_params / 1000000, 4)
-            print(
-                f"Trainable #Parameters with Head params: {trainable_params}M"
-            )
+    #         trainable_params = sum(
+    #             p.numel() for p in model.parameters() if p.requires_grad
+    #         )
+    #         trainable_params = round(trainable_params / 1000000, 4)
+    #         print(
+    #             f"Trainable #Parameters with Head params: {trainable_params}M"
+    #         )
 
-            finetuned_model, optimizer, acc, loss = trainer.train_and_evaluate(
-                model, dataset_name
-            )
-            results.setdefault("Fourier", []).append(acc)
-            checkpoint_path = f"/home/s33zganj/VERA1/checkpoints/fourier_vera_model_{dataset_name}.pth"
-            trainer._save_checkpoint(
-                checkpoint_path, finetuned_model, optimizer, acc, loss
-            )
-            # pretrained_eigenvalues, pretrained_weights = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
-            # his_path_eig = f"/home/s33zganj/VERA1/histograms/eigenvalues/eigen_hist_fourier_{dataset_name}.png"
-            # his_path_weight = f"/home/s33zganj/VERA1/histograms/weights/weight_hist_fourier_{dataset_name}.png"
-            # trainer.eing_his(scale, checkpoint_path,  pretrained_eigenvalues, pretrained_weights, his_path_eig, his_path_weight)
+    #         finetuned_model, optimizer, acc, loss = trainer.train_and_evaluate(
+    #             model, dataset_name
+    #         )
+    #         results.setdefault("Fourier", []).append(acc)
+    #         checkpoint_path = f"{CKPT_BASE_DIR}/fourier_vera_model_{dataset_name}.pth"
+    #         trainer._save_checkpoint(
+    #             checkpoint_path, finetuned_model, optimizer, acc, loss
+    #         )
+    #         # pretrained_eigenvalues, pretrained_weights = trainer._get_all_eigenvalues(scale, pre_trained_check_path, True)
+    #         # his_path_eig = f"{CKPT_BASE_DIR}/histograms/eigen_hist_fourier_{dataset_name}.png"
+    #         # his_path_weight = f"{CKPT_BASE_DIR}/histograms/weight_hist_fourier_{dataset_name}.png"
+    #         # trainer.eing_his(scale, checkpoint_path,  pretrained_eigenvalues, pretrained_weights, his_path_eig, his_path_weight)
 
-    # VeraTrainer.plot_conv_plot(dataset_name)
+    # # VeraTrainer.plot_conv_plot(dataset_name)
 
-    # VeraTrainer.plot_accuracy_comparison(results)
+    # # VeraTrainer.plot_accuracy_comparison(results)

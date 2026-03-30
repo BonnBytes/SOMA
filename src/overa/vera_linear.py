@@ -11,6 +11,7 @@ from .utils import (
     create_hippo,
     next_pow,
     split_qkv_weight,
+    welsh_hadamard_transform
 )
 from .vera_base import VeraBase
 
@@ -90,12 +91,19 @@ class VeraLinear(VeraBase):
         Returns:
             Tuple[th.Tensor, ...]: Tuple containing wavelet matrices.
         """
-        power = next_pow(self.out_feat)
-        A = th.from_numpy(hadamard(power))
-        B = th.from_numpy(hadamard(power))
-        A = A[: self.out_feat, : self.out_feat]
-        B = A.T
-        return A, B
+        # power = next_pow(self.out_feat)
+        # A = th.from_numpy(hadamard(power))[:self.out_feat, :self.out_feat].float()
+        # B = th.from_numpy(hadamard(power))[-self.out_feat:, -self.out_feat:].float()
+        # A, _ = th.linalg.qr(A)
+        # # B, _ = th.linalg.qr(B)
+        # B = A.T
+        # # A = th.from_numpy(hadamard(power))
+        # # B = th.from_numpy(hadamard(power))
+        # # A = A[: self.out_feat, : self.out_feat]
+        # return A, B
+        a_mat = partial(welsh_hadamard_transform, inverse=False)
+        b_mat = partial(welsh_hadamard_transform, inverse=True)
+        return a_mat, b_mat
 
     def hippo_bases(self) -> Tuple[th.Tensor, ...]:
         """Compute Hippo bases.
@@ -119,7 +127,7 @@ class VeraLinear(VeraBase):
         self.vera_lambda_d = th.nn.Parameter(
             th.empty(self.rank), requires_grad=True
         )
-        th.nn.init.normal_(self.vera_lambda_d, std=0.02)
+        th.nn.init.constant_(self.vera_lambda_d, 1e-7)
         init_fn = th.zeros
         if self.__ut_lambda_init == "o":
             init_fn = th.ones
@@ -168,6 +176,31 @@ class VeraLinear(VeraBase):
         y_out = temp @ l_b.to(dtype=temp.dtype)
         return y_out
 
+    def __hadamard_forward(self, x: th.Tensor) -> th.Tensor:
+        """Hadamard-VeRA forward pass.
+
+        Args:
+            x (th.Tensor): Input tensor.
+
+        Returns:
+            th.Tensor: VeRA-Hadamard Output.
+        """
+        dt = x.dtype
+        temp = self.A_vera(x)
+        l_d = th.diag(
+            th.cat(
+                [
+                    self.vera_lambda_d.to(dtype=dt),
+                    self.fixed_lambda_d.to(dtype=dt),
+                ]
+            )
+        ).to(dtype=dt)
+        temp = temp.to(dtype=dt) @ l_d
+        temp = self.B_vera(temp)
+        l_b = th.diag(self.vera_lambda_b)
+        y_out = temp @ l_b.to(dtype=temp.dtype)
+        return y_out
+
     def __ortho_forward(self, x: th.Tensor) -> th.Tensor:
         """Orthogonal forward pass.
 
@@ -205,6 +238,8 @@ class VeraLinear(VeraBase):
         result = self.base_layer(x, *args, **kwargs)
         if self.__init_scheme == "f":
             vera_result = self.__fft_forward(x)
+        elif self.__init_scheme == "h":
+            vera_result = self.__hadamard_forward(x)
         else:
             vera_result = self.__ortho_forward(x)
         return result + self.alpha * vera_result

@@ -156,7 +156,7 @@ def train(args: Namespace):
             else:
                 param.requires_grad = False
         opt = th.optim.Adam(
-            model.parameters(), lr=1e-3 if args.init != "h" else 1e-4
+            model.parameters(), lr=1e-3 #if args.init != "h" else 1e-4
         )
         num_params = sum(
             param.numel()

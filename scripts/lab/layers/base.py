@@ -29,7 +29,7 @@ class BaseVeraLayer(nn.Module):
 
     def reset_vera_parameters(self, d_initial: float = 0.1):
         with torch.no_grad():
-            nn.init.zeros_(self.vera_lambda_d).fill_(d_initial)
+            nn.init.zeros_(self.vera_lambda_d).fill_(1e-7)
             nn.init.zeros_(self.vera_lambda_b)
 
     def _move_adapter_to_device_of_base_layer(self):

@@ -127,3 +127,43 @@ def set_seed(seed: Optional[int] = 60):
     th.cuda.manual_seed_all(seed)
     th.backends.cudnn.deterministic = True
     th.backends.cudnn.benchmark = True
+
+
+def welsh_hadamard_transform(x: th.Tensor, inverse: bool = False) -> th.Tensor:
+    """Compute Welsh Hadamard Transform
+
+    Args:
+        x (th.Tensor): Input tensor
+        inverse (bool, optional): Whether to compute the inverse transform. Defaults to False.
+
+    Returns:
+        th.Tensor: Transformed tensor
+    """
+    if x.dim() == 0:
+        raise TypeError("Expected at least 1D tensor.")
+    a = x.float().clone()
+    n_orig = a.shape[-1]
+
+    # Pad last dim to next power of 2
+    n = next_pow(n_orig)
+    if n > n_orig:
+        pad = th.zeros(*a.shape[:-1], n-n_orig, dtype=a.dtype, device=a.device)
+        a = th.cat([a, pad], dim=-1)
+    
+    h = 2
+    while h <= n:
+        hf = h // 2
+        shape = a.shape[:-1] + (n // h, 2, hf)
+        a = a.reshape(shape)
+        u, v = a[..., 0, :].clone(), a[..., 1, :].clone()
+        a[..., 0, :] = u + v
+        a[..., 1, :] = u - v
+        a = a.reshape(*a.shape[:-3] + (n,))
+        h *= 2
+    
+    if inverse:
+        a = a / n
+    
+    if n > n_orig:
+        a = a[..., :n_orig]
+    return a
