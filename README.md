@@ -26,6 +26,7 @@ make check-all # pre-commit check
 To train the model for the toy example in the paper, execute
 ```bash
 bash scripts/toy_random_projection/runs.sh
+python scripts/toy_random_projection/plots.py
 ```
 
 ## Image classification

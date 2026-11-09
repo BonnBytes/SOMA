@@ -4,7 +4,7 @@ from functools import partial
 from typing import Any, Callable, Dict, Tuple, Union
 
 import torch as th
-from scipy import hadamard
+from scipy.linalg import hadamard
 
 from .utils import (
     construct_wavelet_matrices,
@@ -29,6 +29,7 @@ class VeraLinear(VeraBase):
 
         Raises:
             ValueError: Error if ortho init is outside of selected ones.
+            ValueError: Error if untrained lambdas as not properly intialised.
         """
         super(VeraLinear, self).__init__(base_layer)
         self.rank = config["rank"]
@@ -37,6 +38,8 @@ class VeraLinear(VeraBase):
         if self.__init_scheme not in ["f", "w", "h", "m"]:
             raise ValueError("Improper init scheme")
         self.__ut_lambda_init = config["ut_lambda"]
+        if self.__ut_lambda_init not in ["z", "o", "r"]:
+            raise ValueError("Improper untrained lambda init scheme")
         if self.__init_scheme == "w":
             self.__wavelet = config["wavelet"]
             self.__transform_level = config["transform_level"]
@@ -77,8 +80,8 @@ class VeraLinear(VeraBase):
         Returns:
             Tuple[Callable, ...]: Tuple containing fourier matrices.
         """
-        a_mat = partial(th.fft.rfft, norm="ortho")
-        b_mat = partial(th.fft.irfft, norm="ortho")
+        a_mat = partial(th.fft.rfft, norm="ortho", n=self.out_feat)
+        b_mat = partial(th.fft.irfft, norm="ortho", n=self.out_feat)
         return a_mat, b_mat
 
     def welsh_bases(self) -> Tuple[th.Tensor, ...]:
@@ -105,7 +108,11 @@ class VeraLinear(VeraBase):
         return A, B
 
     def update_layer(self) -> None:
-        """Initialise VeRA parameters."""
+        """Initialise VeRA parameters.
+
+        Raises:
+            ValueError: Error if rank is greater than Fourier embedding dimension.
+        """
         self.vera_lambda_b = th.nn.Parameter(
             th.zeros(self.out_feat), requires_grad=True
         )
@@ -113,11 +120,28 @@ class VeraLinear(VeraBase):
             th.empty(self.rank), requires_grad=True
         )
         th.nn.init.normal_(self.vera_lambda_d)
+        init_fn = th.zeros
+        if self.__ut_lambda_init == "o":
+            init_fn = th.ones
+        elif self.__ut_lambda_init == "r":
+            init_fn = th.randn
+        fixed_shape = self.out_feat - self.rank
+        if self.__init_scheme == "f":
+            if self.rank > self.out_feat // 2 + 1:
+                raise ValueError(
+                    "Rank cannot be greater than Fourier embedding dimension."
+                )
+            fixed_shape = (self.out_feat // 2 + 1) - self.rank
         self.fixed_lambda_d = th.nn.Parameter(
-            th.zeros(self.out_feat - self.rank), requires_grad=False
+            init_fn(fixed_shape), requires_grad=False
         )
-        self.A_vera, self.B_vera = self.compute_bases()
-        self.__move_to_device()
+        a_mat, b_mat = self.compute_bases()
+        if isinstance(a_mat, th.Tensor) and isinstance(b_mat, th.Tensor):
+            self.A_vera = th.nn.Parameter(a_mat, requires_grad=False)
+            self.B_vera = th.nn.Parameter(b_mat, requires_grad=False)
+        else:
+            self.A_vera, self.B_vera = a_mat, b_mat
+        self.move_to_device()
 
     def __fft_forward(self, x: th.Tensor) -> th.Tensor:
         """FFT-VeRA forward pass.
@@ -129,8 +153,7 @@ class VeraLinear(VeraBase):
             th.Tensor: VeRA-FFT Output.
         """
         dt_cf = th.cfloat
-        temp = self.A_vera(x.T)
-        _, u = temp.shape
+        temp = self.A_vera(x)
         l_d = th.diag(
             th.cat(
                 [
@@ -139,11 +162,11 @@ class VeraLinear(VeraBase):
                 ]
             )
         ).to(dtype=dt_cf)
-        temp = temp @ l_d
+        temp = temp.to(dtype=dt_cf) @ l_d
         temp = self.B_vera(temp)
         l_b = th.diag(self.vera_lambda_b)
-        y_out = temp @ l_b.to(dtype=x.dtype)
-        return y_out.T
+        y_out = temp @ l_b.to(dtype=temp.dtype)
+        return y_out
 
     def __ortho_forward(self, x: th.Tensor) -> th.Tensor:
         """Orthogonal forward pass.
@@ -164,8 +187,10 @@ class VeraLinear(VeraBase):
             )
         ).to(dtype=dt)
         l_b = th.diag(self.vera_lambda_b.to(dtype=dt)).to(dtype=dt)
-        H = l_b @ self.B_vera.to(dtype=dt) @ l_d @ self.A_vera.to(dtype=dt)
-        y_out = H @ x.to(dtype=dt)
+        temp_x = x @ self.A_vera.to(dtype=dt).T
+        temp_x = temp_x @ l_d
+        temp_x = temp_x @ self.B_vera.to(dtype=dt).T
+        y_out = temp_x @ l_b
         return y_out
 
     def forward(self, x: th.Tensor, *args, **kwargs) -> th.Tensor:
@@ -222,6 +247,7 @@ class VeraMergedLinear(th.nn.Module):
         base_weight = th.tensor(
             layer.weight.data
         )  # convert to tensor to make mypy happy.
+        # base_weight = layer.weight.detach().clone()
         w_q, w_k, w_v = split_qkv_weight(base_weight)
         self.w_q.weight.data = w_q
         self.w_k.weight.data = w_k

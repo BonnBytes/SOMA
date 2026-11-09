@@ -1,18 +1,18 @@
 # RANDOM RUNS
-python simple_convergence.py --init=r --full_rank=1024 --rank=32
+python scripts/toy_random_projection/projection.py --init=r --embed_dim=1024 --rank=32
 # FOURIER RUNS
-python simple_convergence.py --init=f --full_rank=1024 --untrain_lambda_init=z --rank=32
-python simple_convergence.py --init=f --full_rank=1024 --untrain_lambda_init=o --rank=32
-python simple_convergence.py --init=f --full_rank=1024 --untrain_lambda_init=r --rank=32
-# # WAVELET RUNS
-python simple_convergence.py --init=w --full_rank=1024 --untrain_lambda_init=z --rank=32
-python simple_convergence.py --init=w --full_rank=1024 --untrain_lambda_init=o --rank=32
-python simple_convergence.py --init=w --full_rank=1024 --untrain_lambda_init=r --rank=32
-# # HADAMARD RUNS
-python simple_convergence.py --init=h --full_rank=1024 --untrain_lambda_init=z --iterations=1000 --rank=32
-python simple_convergence.py --init=h --full_rank=1024 --untrain_lambda_init=o --iterations=1000 --rank=32
-python simple_convergence.py --init=h --full_rank=1024 --untrain_lambda_init=r --iterations=1000 --rank=32
-# # HIPPO RUNS
-python simple_convergence.py --init=m --full_rank=1024 --untrain_lambda_init=z --rank=32
-python simple_convergence.py --init=m --full_rank=1024 --untrain_lambda_init=o --rank=32
-python simple_convergence.py --init=m --full_rank=1024 --untrain_lambda_init=r --rank=32
+python scripts/toy_random_projection/projection.py --init=f --embed_dim=1024 --ut_lambda=z --rank=32
+# python scripts/toy_random_projection/projection.py --init=f --embed_dim=1024 --ut_lambda=r --rank=32
+# python scripts/toy_random_projection/projection.py --init=f --embed_dim=1024 --ut_lambda=o --rank=32
+# WAVELET RUNS
+python scripts/toy_random_projection/projection.py --init=w --embed_dim=1024 --ut_lambda=z --rank=32
+# python scripts/toy_random_projection/projection.py --init=w --embed_dim=1024 --ut_lambda=o --rank=32
+# python scripts/toy_random_projection/projection.py --init=w --embed_dim=1024 --ut_lambda=r --rank=32
+# HADAMARD RUNS
+python scripts/toy_random_projection/projection.py --init=h --embed_dim=1024 --ut_lambda=z --rank=32
+# python scripts/toy_random_projection/projection.py --init=h --embed_dim=1024 --ut_lambda=o --rank=32
+# python scripts/toy_random_projection/projection.py --init=h --embed_dim=1024 --ut_lambda=r --rank=32
+# HIPPO RUNS
+# python scripts/toy_random_projection/projection.py --init=m --embed_dim=1024 --ut_lambda=z --rank=32
+# python scripts/toy_random_projection/projection.py --init=m --embed_dim=1024 --ut_lambda=o --rank=32
+# python scripts/toy_random_projection/projection.py --init=m --embed_dim=1024 --ut_lambda=r --rank=32
