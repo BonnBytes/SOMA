@@ -177,3 +177,5 @@ data/
 .vscode
 *.png
 .DS_Store
+*.json
+*.pickle

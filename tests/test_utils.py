@@ -1,12 +1,15 @@
 """Tests for Utils package."""
 
-from math import sqrt
 from typing import Tuple
 
+import numpy as np
 import pytest
+import pywt
 import torch as th
+from scipy.linalg import hadamard
 
-from src.overa.utils import create_hippo, next_pow, split_qkv_weight
+from src.soma.transforms import fast_wavelet_transform, fwht_optimized
+from src.soma.utils import next_pow, split_qkv_weight
 
 
 def test_qkv_split():
@@ -41,24 +44,38 @@ def test_nextpower(io_maps: Tuple[int, int]):
     assert power == near_power
 
 
-@pytest.mark.parametrize(
-    "io_maps",
-    (
-        (2, th.tensor([[1, 0], [sqrt(3), 2]])),
-        (
-            3,
-            th.tensor(
-                [[1, 0, 0], [sqrt(3), 2, 0], [sqrt(5), sqrt(5) * sqrt(3), 3]]
-            ),
-        ),
-    ),
-)
-def test_hippo_matrix(io_maps: Tuple[int, th.Tensor]):
-    """Test hippo initialisation.
+@pytest.fixture(autouse=True)
+def reset_dynamo():
+    """Reset torch.compile caches so per-shape recompiles don't hit the limit.
 
-    Args:
-        io_maps (Tuple[int, th.Tensor]): Tuple containing hippo matrix and shape.
+    Yields:
+        None: Test.
     """
-    n, gt = io_maps
-    matrix = create_hippo(n)
-    assert th.allclose(matrix, gt)
+    th._dynamo.reset()
+    yield
+
+
+def test_hadamard_transform():
+    """Test Hadamard forward and inverse against the explicit matrix."""
+    n = 256
+    x = th.randn((4, n), dtype=th.float64)
+    h_mat = th.from_numpy(hadamard(n)).to(th.float64)
+    y = fwht_optimized(x)
+    assert th.allclose(y, x @ h_mat)
+    assert th.allclose(fwht_optimized(y, inverse=True), x)
+
+
+def test_wavelet_transform():
+    """Test wavelet forward against PyWavelets and inverse reconstruction."""
+    wavelet = pywt.Wavelet("haar")
+    x = th.randn((4, 768), dtype=th.float64)
+    coeffs, sizes = fast_wavelet_transform(
+        x, wavelet=wavelet, transform_level=5
+    )
+    gt = pywt.wavedec(x.numpy(), wavelet, mode="zero", level=5, axis=-1)
+    assert sizes == [c.shape[-1] for c in gt]
+    assert th.allclose(coeffs, th.from_numpy(np.concatenate(gt, axis=-1)))
+    rec = fast_wavelet_transform(
+        coeffs, inverse=True, sizes=sizes, wavelet=wavelet
+    )
+    assert th.allclose(rec, x)

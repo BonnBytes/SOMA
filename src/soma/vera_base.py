@@ -14,9 +14,6 @@ class VeraBase(ABC, th.nn.Module):
 
         Args:
             base_layer (th.nn.Module): VeRA base linear layer.
-
-        Raises:
-            ValueError: Raise error if base projection is not square.
         """
         super(VeraBase, self).__init__()
         self.base_layer = base_layer
@@ -26,8 +23,6 @@ class VeraBase(ABC, th.nn.Module):
         self.A_vera: Optional[Any] = None
         self.B_vera: Optional[Any] = None
         self.in_feat, self.out_feat = self.__get_layer_dimensions()
-        if self.in_feat != self.out_feat:
-            raise ValueError("Non-square base projection is not allowed.")
 
     def __get_layer_dimensions(self) -> Tuple[int, int]:
         """Get base layer dimensions.

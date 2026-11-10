@@ -1,13 +1,18 @@
+"""Resisc dataloader."""
+
 import os
+from typing import Any
 
 from PIL import Image
-from torch.utils.data import DataLoader, Dataset
-from torchvision import transforms
+from torch.utils.data import Dataset
 
 
 class RESISC45Dataset(Dataset):
+    """Resisc dataloader."""
+
     def __init__(self, root_dir, transform=None):
-        """
+        """Initialise.
+
         Args:
             root_dir (str): Path to the dataset directory (e.g., 'res').
             transform (callable, optional): Optional transform to apply to the images.
@@ -27,10 +32,23 @@ class RESISC45Dataset(Dataset):
                 self.image_paths.append(os.path.join(cls_dir, img_name))
                 self.labels.append(self.class_to_idx[cls_name])
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """Compute length of dataset.
+
+        Returns:
+            int: Len of dataset.
+        """
         return len(self.image_paths)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> tuple[Any, int]:
+        """Load a sample from dataset.
+
+        Args:
+            idx (int): Index of sample.
+
+        Returns:
+            tuple[Any, int]: Tuple containing image and its label.
+        """
         img_path = self.image_paths[idx]
         label = self.labels[idx]
         image = Image.open(img_path).convert("RGB")  # Ensure 3-channel RGB
