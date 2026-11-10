@@ -1,4 +1,4 @@
-# Orthogonal VeRA
+# SOMA
 
 ## Installation
 We use UV for installation and packaging purpose. Run the following command to create virtual environment
